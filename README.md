@@ -1,17 +1,36 @@
 # automatic-openconnect
 
-Cross-platform headless automation for [openconnect-sso]: bring a Cisco
-AnyConnect compatible VPN tunnel up around a block of code, pulling the
-login password and TOTP seed from the OS keyring. Built for, and
-live-verified against, the University of Graz VPN
-(`univpn.uni-graz.at`).
+**Connect to the University of Graz VPN (`univpn.uni-graz.at`) automatically,
+without typing your password or 2FA code every time.**
 
-> ## ⚠️ Use at your own risk. Not supported by uniIT.
+This tool brings the Uni Graz VPN tunnel up around a block of your code and
+tears it down again afterwards, pulling your login password and (optionally)
+your TOTP 2-factor code from the OS keyring. It was built for — and is
+live-verified against — the Uni Graz VPN. It is headless and cross-platform
+(Linux, Windows, macOS planned).
+
+It is a thin automation layer on top of [openconnect-sso], which speaks the
+Cisco AnyConnect protocol.
+
+### Works with other VPNs too
+
+Nothing here is hard-wired to Uni Graz. Any Cisco AnyConnect–compatible VPN
+that `openconnect-sso` can reach works the same way — just point `server` at
+your own gateway and use your own login email (see [Usage](#usage-library)).
+The Uni Graz defaults and the notes below are simply there because that is
+what it was built and tested for.
+
+> ## ⚠️ For University of Graz members: use at your own risk — not supported by uniIT
 >
-> This is a **community tool**, hosted on a personal account. It is **not**
-> an institutional product and is **not supported by uniIT** (or any other
-> IT department). OpenConnect may be used "auf eigenes Risiko und eigene
-> Verantwortung" per the university policy
+> The note in this box applies specifically to **members of the University of
+> Graz** using this tool against the official Uni Graz VPN. (If you point it
+> at a different organisation's VPN, follow that organisation's own policy
+> instead.)
+>
+> This is a **community tool**, hosted on a personal account. It is **not** an
+> institutional product and is **not supported by uniIT** (the Uni Graz IT
+> department) or any other IT department. At Uni Graz, OpenConnect may be used
+> "auf eigenes Risiko und eigene Verantwortung" per the university policy
 > ([Mitteilungsblatt 2007-08/31.a](https://mitteilungsblatt.uni-graz.at/de/2007-08/31.a/pdf/)).
 > Storing your TOTP seed in a keyring is your decision and your
 > responsibility. If you enable it, keep disk encryption on (BitLocker /
@@ -54,8 +73,8 @@ from automatic_openconnect import auto_vpn_session, VPNError
 config_data = {
     "auto_vpn": {
         "enabled": True,
-        "user_email": "you@example.uni-graz.at",
-        "server": "univpn.uni-graz.at",
+        "user_email": "you@example.uni-graz.at",  # your login email
+        "server": "univpn.uni-graz.at",            # Uni Graz default; swap for another gateway
     }
 }
 
