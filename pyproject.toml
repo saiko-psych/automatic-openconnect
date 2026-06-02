@@ -1,0 +1,65 @@
+# ===========================================================================
+# pyproject.toml - automatic-openconnect
+# ===========================================================================
+# Install (git-only for now, no PyPI):
+#
+#   uv tool install --with PyQt6 --with "setuptools<70" \
+#       --from git+https://github.com/saiko-psych/automatic-openconnect \
+#       automatic-openconnect
+#
+# The two --with pins are inherited from the openconnect-sso dependency,
+# which is installed separately (it is NOT bundled here).
+# ===========================================================================
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "automatic-openconnect"
+version = "0.0.1"
+description = "Cross-platform headless openconnect-sso automation: bring a Cisco AnyConnect compatible VPN up around your code, with login PW + TOTP seed from the OS keyring. Community tool, not supported by uniIT."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "saiko-psych" }]
+keywords = ["openconnect", "vpn", "anyconnect", "totp", "keyring", "uni-graz"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Networking",
+]
+
+dependencies = [
+    "keyring>=25.0",
+    "pyotp>=2.9",
+    "pynput>=1.7",
+]
+
+# NOTE: openconnect-sso and PyQt6 are intentionally NOT listed here. They
+# are heavyweight and installed out-of-band via `uv tool install --with`.
+# This package imports openconnect-sso only by shelling out to the CLI.
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+# CLI lands in Phase 4 (cli.py). Placeholder kept out until then so we
+# don't ship a broken entry point.
+
+[project.urls]
+Homepage = "https://github.com/saiko-psych/automatic-openconnect"
+Issues = "https://github.com/saiko-psych/automatic-openconnect/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/automatic_openconnect"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
