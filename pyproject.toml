@@ -63,3 +63,7 @@ packages = ["src/automatic_openconnect"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# src-layout: make the package importable for a fresh checkout without
+# requiring `pip install -e .` first. CI still installs the package, so
+# this only smooths local `pytest` runs.
+pythonpath = ["src"]
