@@ -26,6 +26,9 @@ GEMINI.md
 .cursorrules
 .aider*
 
+# internal working docs (brainstorming specs, implementation plans) — local only
+docs/superpowers/
+
 # local env / secrets
 .env
 .env.*
