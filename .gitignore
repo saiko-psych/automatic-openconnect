@@ -11,3 +11,7 @@ config.toml
 config.json
 *.pid
 site/
+
+# one-shot repo bootstrap helpers (not part of the package)
+push_to_github.ps1
+push_to_github.sh
