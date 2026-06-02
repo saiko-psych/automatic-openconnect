@@ -15,3 +15,21 @@ site/
 # one-shot repo bootstrap helpers (not part of the package)
 push_to_github.ps1
 push_to_github.sh
+
+# AI-assistant / local-only files — never publish
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+GEMINI.md
+.claude/
+.cursor/
+.cursorrules
+.aider*
+
+# local env / secrets
+.env
+.env.*
+secrets.toml
+*.local.json
+*.pem
+*.key
