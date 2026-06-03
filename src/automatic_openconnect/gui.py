@@ -39,8 +39,10 @@ class SetupView(QWidget):
         self.server = QLineEdit(existing.get("server", "univpn.uni-graz.at"))
         self.oc = QLineEdit(existing.get("openconnect_path") or gl.detect_openconnect())
         self.sso = QLineEdit(existing.get("openconnect_sso_path") or gl.detect_openconnect_sso())
-        self.pw = QLineEdit(); self.pw.setEchoMode(QLineEdit.EchoMode.Password)
-        self.totp = QLineEdit(); self.totp.setEchoMode(QLineEdit.EchoMode.Password)
+        self.pw = QLineEdit()
+        self.pw.setEchoMode(QLineEdit.EchoMode.Password)
+        self.totp = QLineEdit()
+        self.totp.setEchoMode(QLineEdit.EchoMode.Password)
         self.stop_cisco = QCheckBox("Cisco Secure Client während Verbindung stoppen")
         self.stop_cisco.setChecked(existing.get("stop_cisco_during_run", True))
         self.stop_mullvad = QCheckBox("Mullvad während Verbindung stoppen")
@@ -78,16 +80,18 @@ class SetupView(QWidget):
             stop_mullvad=self.stop_mullvad.isChecked())
         path = cfgmod.save_config(data)
 
-        if self.pw.text():
-            set_uni_login_password(fields["email"], self.pw.text())
-        if self.totp.text():
-            set_uni_totp_secret(fields["email"], self.totp.text().replace(" ", ""))
-
         try:
             tw.register(sys.executable, str(path))
         except Exception as exc:  # VPNError or subprocess failure
             QMessageBox.critical(self, "Setup fehlgeschlagen", str(exc))
             return
+
+        # Commit credentials only once the elevated task actually exists.
+        if self.pw.text():
+            set_uni_login_password(fields["email"], self.pw.text())
+        if self.totp.text():
+            set_uni_totp_secret(fields["email"], self.totp.text().replace(" ", ""))
+
         QMessageBox.information(self, "Fertig",
                                 "Eingerichtet. Verbinden braucht jetzt keinen Admin-Dialog mehr.")
         self._on_done()
@@ -106,11 +110,11 @@ class ControlView(QWidget):
             layout.addWidget(w)
 
         self._timer = QTimer(self)
-        self._timer.timeout.connect(self._refresh)
+        self._timer.timeout.connect(self.refresh)
         self._timer.start(3000)
-        self._refresh()
+        self.refresh()
 
-    def _refresh(self):
+    def refresh(self):
         up = is_vpn_up()
         self.status.setText("🟢 Verbunden" if up else "⚪ Getrennt")
         self.connect_btn.setEnabled(not up)
@@ -121,14 +125,14 @@ class ControlView(QWidget):
             tw.run(tw.TASK_UP)
         except Exception as exc:
             QMessageBox.critical(self, "Fehler", str(exc))
-        self._refresh()
+        self.refresh()
 
     def _disconnect(self):
         try:
             tw.run(tw.TASK_DOWN)
         except Exception as exc:
             QMessageBox.critical(self, "Fehler", str(exc))
-        self._refresh()
+        self.refresh()
 
 
 class MainWindow(QWidget):
@@ -149,7 +153,7 @@ class MainWindow(QWidget):
         self.stack.setCurrentWidget(self.setup if view == "setup" else self.control)
 
     def _show_control(self):
-        self.control._refresh()
+        self.control.refresh()
         self.stack.setCurrentWidget(self.control)
 
 
