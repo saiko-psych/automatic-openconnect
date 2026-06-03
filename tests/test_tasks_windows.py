@@ -44,7 +44,7 @@ class TestBuilders(unittest.TestCase):
         import re
         inner = "Write-Host hi"
         argv = tw.build_elevated_launch(inner)
-        cmd = argv[-1]
+        cmd = argv[argv.index("-Command") + 1]
         m = re.search(r"'-EncodedCommand','([A-Za-z0-9+/=]+)'", cmd)
         self.assertIsNotNone(m)
         decoded = base64.b64decode(m.group(1)).decode("utf-16-le")
@@ -53,7 +53,7 @@ class TestBuilders(unittest.TestCase):
 
 class TestRun(unittest.TestCase):
     def test_run_invokes_schtasks_run(self):
-        with mock.patch("subprocess.run") as run:
+        with mock.patch("automatic_openconnect.tasks_windows.subprocess.run") as run:
             run.return_value = subprocess.CompletedProcess([], 0, "", "")
             tw.run(tw.TASK_UP)
             args = run.call_args[0][0]
@@ -61,7 +61,7 @@ class TestRun(unittest.TestCase):
             self.assertIn(tw.TASK_UP, args)
 
     def test_run_raises_vpnerror_on_nonzero(self):
-        with mock.patch("subprocess.run") as run:
+        with mock.patch("automatic_openconnect.tasks_windows.subprocess.run") as run:
             run.return_value = subprocess.CompletedProcess([], 1, "", "boom")
             with self.assertRaises(VPNError):
                 tw.run(tw.TASK_DOWN)
@@ -69,21 +69,27 @@ class TestRun(unittest.TestCase):
 
 class TestIsRegistered(unittest.TestCase):
     def test_true_when_query_succeeds(self):
-        with mock.patch("subprocess.run") as run:
+        with mock.patch("automatic_openconnect.tasks_windows.subprocess.run") as run:
             run.return_value = subprocess.CompletedProcess([], 0, "", "")
             self.assertTrue(tw.is_registered())
 
     def test_false_when_query_fails(self):
-        with mock.patch("subprocess.run") as run:
+        with mock.patch("automatic_openconnect.tasks_windows.subprocess.run") as run:
             run.return_value = subprocess.CompletedProcess([], 1, "", "")
             self.assertFalse(tw.is_registered())
 
 
 class TestRegister(unittest.TestCase):
     def test_register_launches_elevated_powershell(self):
-        with mock.patch("subprocess.run") as run:
+        with mock.patch("automatic_openconnect.tasks_windows.subprocess.run") as run:
             run.return_value = subprocess.CompletedProcess([], 0, "", "")
             tw.register(r"C:\py.exe", r"C:\cfg.json")
             argv = run.call_args[0][0]
             self.assertEqual(argv[0].lower(), "powershell")
             self.assertIn("Start-Process", " ".join(argv))
+
+    def test_register_raises_vpnerror_on_nonzero(self):
+        with mock.patch("automatic_openconnect.tasks_windows.subprocess.run") as run:
+            run.return_value = subprocess.CompletedProcess([], 1, "", "cancelled")
+            with self.assertRaises(VPNError):
+                tw.register(r"C:\py.exe", r"C:\cfg.json")
