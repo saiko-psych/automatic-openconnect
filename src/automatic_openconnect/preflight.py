@@ -6,8 +6,9 @@ result, the logic stays unit-testable.
 
 Checked prerequisites:
   1. openconnect.exe   — the VPN engine (builds the tunnel / Wintun adapter)
-  2. openconnect-sso   — performs the Uni-Graz Keycloak/SAML login
-  3. config.toml       — openconnect-sso's auto-fill selectors for Uni-Graz
+  2. openconnect-sso   — performs the Keycloak/SAML login
+  3. config.toml       — openconnect-sso's auto-fill selectors (the bundled
+                         template defaults to Uni Graz; see CONFIG_TOML_TEMPLATE)
   4. credentials       — login password + TOTP seed in the OS keyring
 """
 

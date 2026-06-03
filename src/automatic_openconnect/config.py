@@ -1,13 +1,15 @@
 # src/automatic_openconnect/config.py
 # -*- coding: utf-8 -*-
-"""Per-user configuration storage for the standalone app.
+"""Machine-wide configuration storage for the standalone app.
 
 The on-disk schema is the same ``auto_vpn`` block that
-``automatic_openconnect._windows`` already consumes. Stored per-user under
-``%APPDATA%\\automatic-openconnect\\config.json`` so the app works
-regardless of where it is launched and the file stays out of any git
-checkout. Credentials are NOT stored here — they live in the keyring
-(see ``automatic_openconnect.secrets``).
+``automatic_openconnect._windows`` already consumes. Stored under
+``%PROGRAMDATA%\\automatic-openconnect\\config.json`` (NOT %APPDATA%) so the
+elevated Scheduled Task can read the same file the GUI wrote — the task's
+session cannot see the user's per-profile AppData. The file works regardless
+of where the app is launched and stays out of any git checkout. Credentials
+are NOT stored here — they live in the keyring
+(see ``automatic_openconnect.secrets``). See :func:`config_dir` for details.
 """
 
 from __future__ import annotations

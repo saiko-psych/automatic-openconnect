@@ -80,6 +80,15 @@ _STRINGS: dict[str, dict[str, str]] = {
     # QR / TOTP
     "qr.unavailable_title": {"en": "QR detection unavailable",
                              "de": "QR-Erkennung nicht verfügbar"},
+    "qr.unavailable_msg": {
+        "en": "QR detection needs OpenCV. Reinstall with:\n"
+              "  uv tool install --reinstall --with opencv-python-headless "
+              "--with PyQt6 --with \"setuptools<70\" automatic-openconnect\n"
+              "Or enter the base32 seed manually.",
+        "de": "QR-Erkennung benötigt OpenCV. Neu installieren mit:\n"
+              "  uv tool install --reinstall --with opencv-python-headless "
+              "--with PyQt6 --with \"setuptools<70\" automatic-openconnect\n"
+              "Oder den base32-Seed manuell eintragen."},
     "qr.read_error": {"en": "Could not read image", "de": "Fehler beim Lesen"},
     "qr.found_title": {"en": "Seed detected", "de": "Seed erkannt"},
     "qr.found_msg": {

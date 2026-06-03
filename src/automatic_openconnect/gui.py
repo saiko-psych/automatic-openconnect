@@ -259,8 +259,9 @@ class SetupView(QWidget):
             return
         try:
             secret = qr.secret_from_qr_image(path)
-        except qr.QRUnavailable as exc:
-            QMessageBox.warning(self, t("qr.unavailable_title"), str(exc))
+        except qr.QRUnavailable:
+            QMessageBox.warning(self, t("qr.unavailable_title"),
+                                t("qr.unavailable_msg"))
             return
         except Exception as exc:
             QMessageBox.critical(self, t("qr.read_error"), str(exc))
@@ -407,11 +408,13 @@ class ControlView(QWidget):
         else:
             self._set_dot(_DOT_GREY)
             self.status.setText(t("status.disconnected"))
-        # Heartbeat: while this GUI is alive and owns a (pending) connection,
-        # keep the watchdog's timestamp fresh so it does NOT tear the tunnel
-        # down. If the GUI crashes, these writes stop and the up-task tears
-        # the tunnel down within ~15 s.
-        if up or self._connecting > 0:
+        # Heartbeat: keep the watchdog's timestamp fresh while this GUI is
+        # alive and owns a connection — including AFTER the display timeout
+        # (self._failed). Otherwise a slow SAML login (auth can take far
+        # longer than the display timeout) would stop the heartbeat, and the
+        # up-task's watchdog would tear the tunnel down the moment it finally
+        # comes up. Only a real GUI crash stops these writes.
+        if up or self._connecting > 0 or self._failed:
             session.write_heartbeat(time.time(), background_ok=False)
         self.connect_btn.setEnabled(not up and self._connecting == 0)
         self.disconnect_btn.setEnabled(up or self._connecting > 0)
@@ -604,6 +607,7 @@ class MainWindow(QWidget):
         """Re-create the views and re-label the tray so the new language
         takes effect immediately."""
         on_setup_view = self.stack.currentWidget() is self.setup
+        self.control._timer.stop()   # stop the old poll before tearing it down
         self.stack.removeWidget(self.setup)
         self.stack.removeWidget(self.control)
         self.setup.deleteLater()
