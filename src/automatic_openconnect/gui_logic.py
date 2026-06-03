@@ -18,6 +18,25 @@ from .config import is_configured
 _STD_OPENCONNECT = r"C:\Program Files\OpenConnect-GUI\openconnect.exe"
 
 
+def connect_step_label(log_text: str) -> str:
+    """Map the latest known marker in the connect log to a coarse step,
+    so the GUI can show rough progress while connecting. Order matters:
+    check the latest stages first.
+    """
+    t = log_text
+    if "Traceback (most recent call last)" in t or "FAIL:" in t:
+        return "Verbindung fehlgeschlagen"
+    if "route configuration done" in t or "Tunnel is up" in t:
+        return "Fast fertig …"
+    if "Starting openconnect.exe" in t or "[openconnect]" in t:
+        return "Tunnel wird aufgebaut …"
+    if "Authenticating via openconnect-sso" in t:
+        return "Anmeldung läuft …"
+    if "bringing tunnel up" in t or "Stopping" in t:
+        return "Vorbereitung …"
+    return "Verbinde …"
+
+
 def choose_view(config: dict, registered: bool) -> str:
     """Return 'setup' until config is complete AND tasks are registered."""
     if not is_configured(config) or not registered:

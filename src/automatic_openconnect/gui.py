@@ -15,11 +15,14 @@ from __future__ import annotations
 
 import sys
 
-from PyQt6.QtCore import QTimer
+import importlib.resources as _ir
+
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
-    QApplication, QCheckBox, QDialog, QFormLayout, QLabel, QLineEdit,
-    QMessageBox, QPlainTextEdit, QPushButton, QStackedWidget, QVBoxLayout,
-    QWidget,
+    QApplication, QCheckBox, QDialog, QFormLayout, QHBoxLayout, QLabel,
+    QLineEdit, QMessageBox, QPlainTextEdit, QPushButton, QStackedWidget,
+    QVBoxLayout, QWidget,
 )
 
 from . import config as cfgmod
@@ -31,6 +34,39 @@ from .secrets import set_uni_login_password, set_uni_totp_secret
 # How many 3-second status polls to wait for the tunnel before declaring
 # the connect attempt failed (~36 s — auth + tunnel usually take 10-25 s).
 _CONNECT_TIMEOUT_TICKS = 12
+
+# Status-dot colours per state.
+_DOT_GREEN = "#3ba55d"   # connected
+_DOT_AMBER = "#e0a23c"   # connecting
+_DOT_RED = "#e04f4f"     # failed
+_DOT_GREY = "#6b6e73"    # disconnected
+
+_STYLESHEET = """
+QWidget { background-color: #1e1f22; color: #e6e6e6;
+          font-family: 'Segoe UI', sans-serif; font-size: 13px; }
+QLabel#header { font-size: 22px; font-weight: 600; color: #ffffff; }
+QLabel#subheader { color: #9a9da3; font-size: 12px; }
+QLabel#statusText { font-size: 16px; }
+QLabel#dot { border-radius: 8px; min-width: 16px; max-width: 16px;
+             min-height: 16px; max-height: 16px; }
+QPushButton { background-color: #2b2d31; border: 1px solid #3a3d42;
+              border-radius: 8px; padding: 11px 16px; }
+QPushButton:hover { background-color: #34373c; }
+QPushButton:disabled { color: #6b6e73; background-color: #232427;
+                       border-color: #2c2e33; }
+QPushButton#primary { background-color: #3b82f6; border: none;
+                      color: #ffffff; font-weight: 600; font-size: 15px; }
+QPushButton#primary:hover { background-color: #2f6fe0; }
+QPushButton#primary:disabled { background-color: #2a3a55; color: #8aa0c0; }
+QPushButton#ghost { background-color: transparent; color: #b8bbc0; }
+QPushButton#ghost:hover { background-color: #2b2d31; }
+QLineEdit { background-color: #2b2d31; border: 1px solid #3a3d42;
+            border-radius: 6px; padding: 7px; }
+QLineEdit:focus { border-color: #3b82f6; }
+QPlainTextEdit { background-color: #141517; border: 1px solid #3a3d42;
+                 font-family: 'Cascadia Mono', Consolas, monospace; }
+QCheckBox { spacing: 8px; }
+"""
 
 
 class SetupView(QWidget):
@@ -109,40 +145,90 @@ class ControlView(QWidget):
         super().__init__()
         self._on_settings = on_settings
         self._connecting = 0   # >0 while a connect attempt is in flight
-        layout = QVBoxLayout(self)
+        self._failed = False
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(28, 24, 28, 24)
+        root.setSpacing(12)
+
+        header = QLabel("automatic VPN")
+        header.setObjectName("header")
+        sub = QLabel("Uni-Graz VPN — verbinden ohne Passwort & 2FA")
+        sub.setObjectName("subheader")
+        root.addWidget(header)
+        root.addWidget(sub)
+        root.addStretch(2)
+
+        row = QHBoxLayout()
+        row.setSpacing(10)
+        self.dot = QLabel()
+        self.dot.setObjectName("dot")
         self.status = QLabel("…")
+        self.status.setObjectName("statusText")
+        row.addWidget(self.dot)
+        row.addWidget(self.status)
+        row.addStretch(1)
+        root.addLayout(row)
+        root.addStretch(3)
+
         self.connect_btn = QPushButton("Verbinden")
+        self.connect_btn.setObjectName("primary")
         self.disconnect_btn = QPushButton("Trennen")
         self.log_btn = QPushButton("Log anzeigen")
+        self.log_btn.setObjectName("ghost")
         self.settings_btn = QPushButton("Neu einrichten…")
+        self.settings_btn.setObjectName("ghost")
         self.connect_btn.clicked.connect(self._connect)
         self.disconnect_btn.clicked.connect(self._disconnect)
         self.log_btn.clicked.connect(self._show_log)
         self.settings_btn.clicked.connect(lambda: self._on_settings())
-        for w in (self.status, self.connect_btn, self.disconnect_btn,
-                  self.log_btn, self.settings_btn):
-            layout.addWidget(w)
+        for w in (self.connect_btn, self.disconnect_btn, self.log_btn,
+                  self.settings_btn):
+            root.addWidget(w)
 
         self._timer = QTimer(self)
         self._timer.timeout.connect(self.refresh)
-        self._timer.start(3000)
+        self._timer.start(2000)
         self.refresh()
+
+    def _set_dot(self, color: str) -> None:
+        self.dot.setStyleSheet(f"background-color: {color};")
+
+    def _read_log(self) -> str:
+        try:
+            with open(connect_log_path(str(cfgmod.config_path())),
+                      encoding="utf-8", errors="replace") as f:
+                return f.read()
+        except OSError:
+            return ""
 
     def refresh(self):
         up = is_vpn_up()
         if up:
             self._connecting = 0
-            self.status.setText("Status: Verbunden")
+            self._failed = False
+            self._set_dot(_DOT_GREEN)
+            self.status.setText("Verbunden")
         elif self._connecting > 0:
             self._connecting -= 1
-            if self._connecting == 0:
-                self.status.setText(
-                    "Status: Verbindung fehlgeschlagen — „Log anzeigen“ für Details")
+            step = gl.connect_step_label(self._read_log())
+            if step == "Verbindung fehlgeschlagen":
+                self._connecting = 0
+                self._failed = True
+                self._set_dot(_DOT_RED)
+                self.status.setText("Verbindung fehlgeschlagen — „Log anzeigen“")
+            elif self._connecting == 0:
+                self._failed = True
+                self._set_dot(_DOT_RED)
+                self.status.setText("Zeitüberschreitung — „Log anzeigen“")
             else:
-                self.status.setText("Status: Verbinde …")
+                self._set_dot(_DOT_AMBER)
+                self.status.setText(step)
+        elif self._failed:
+            self._set_dot(_DOT_RED)
         else:
-            self.status.setText("Status: Getrennt")
-        # Connect only when idle+down; disconnect while up or mid-attempt.
+            self._set_dot(_DOT_GREY)
+            self.status.setText("Getrennt")
         self.connect_btn.setEnabled(not up and self._connecting == 0)
         self.disconnect_btn.setEnabled(up or self._connecting > 0)
 
@@ -151,17 +237,22 @@ class ControlView(QWidget):
             tw.end(tw.TASK_UP)   # clear any stale blocking instance first
             tw.run(tw.TASK_UP)
             self._connecting = _CONNECT_TIMEOUT_TICKS
-            self.status.setText("Status: Verbinde …")
+            self._failed = False
+            self._set_dot(_DOT_AMBER)
+            self.status.setText("Verbinde …")
+            self.connect_btn.setEnabled(False)
+            self.disconnect_btn.setEnabled(True)
         except Exception as exc:
             self._connecting = 0
             QMessageBox.critical(self, "Fehler", str(exc))
-        self.refresh()
+            self.refresh()
 
     def _disconnect(self):
         try:
             tw.run(tw.TASK_DOWN)
             tw.end(tw.TASK_UP)   # stop the lingering up-loop so reconnect works
             self._connecting = 0
+            self._failed = False
         except Exception as exc:
             QMessageBox.critical(self, "Fehler", str(exc))
         self.refresh()
@@ -209,11 +300,24 @@ class MainWindow(QWidget):
         self.stack.setCurrentWidget(self.setup)
 
 
+def _app_icon() -> QIcon:
+    """Load the bundled app icon; empty QIcon if it cannot be found."""
+    try:
+        p = _ir.files("automatic_openconnect") / "assets" / "icon.ico"
+        return QIcon(str(p))
+    except Exception:
+        return QIcon()
+
+
 def main() -> int:
     app = QApplication(sys.argv)
+    app.setStyleSheet(_STYLESHEET)
+    icon = _app_icon()
+    app.setWindowIcon(icon)
     win = MainWindow()
-    win.setMinimumSize(620, 520)
-    win.resize(720, 560)
+    win.setWindowIcon(icon)
+    win.setMinimumSize(560, 520)
+    win.resize(640, 560)
     win.show()
     return app.exec()
 
