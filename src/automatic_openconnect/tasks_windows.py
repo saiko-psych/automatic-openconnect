@@ -112,6 +112,25 @@ def is_registered() -> bool:
     return result.returncode == 0
 
 
+def end(task: str) -> None:
+    """End a running on-demand task instance. No elevation, best-effort.
+
+    The ``up`` task's process blocks forever to hold the tunnel, so its
+    instance stays in the "Running" state. With ``MultipleInstances =
+    IgnoreNew`` that would prevent the next connect from starting. Ending
+    the instance (after the tunnel is already torn down by ``down``) frees
+    the slot so a subsequent connect runs fresh. A no-op if not running.
+    """
+    try:
+        subprocess.run(
+            ["schtasks", "/end", "/tn", task],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, timeout=10,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+
+
 def run(task: str) -> None:
     """Fire an on-demand task. No elevation. Raises VPNError on failure."""
     result = subprocess.run(

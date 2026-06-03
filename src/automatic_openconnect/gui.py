@@ -128,6 +128,7 @@ class ControlView(QWidget):
 
     def _connect(self):
         try:
+            tw.end(tw.TASK_UP)   # clear any stale blocking instance first
             tw.run(tw.TASK_UP)
         except Exception as exc:
             QMessageBox.critical(self, "Fehler", str(exc))
@@ -136,6 +137,7 @@ class ControlView(QWidget):
     def _disconnect(self):
         try:
             tw.run(tw.TASK_DOWN)
+            tw.end(tw.TASK_UP)   # stop the lingering up-loop so reconnect works
         except Exception as exc:
             QMessageBox.critical(self, "Fehler", str(exc))
         self.refresh()

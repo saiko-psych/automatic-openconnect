@@ -79,6 +79,21 @@ class TestRun(unittest.TestCase):
                 tw.run(tw.TASK_DOWN)
 
 
+class TestEnd(unittest.TestCase):
+    def test_end_invokes_schtasks_end(self):
+        with mock.patch("automatic_openconnect.tasks_windows.subprocess.run") as run:
+            run.return_value = subprocess.CompletedProcess([], 0, "", "")
+            tw.end(tw.TASK_UP)
+            args = run.call_args[0][0]
+            self.assertEqual(args[:3], ["schtasks", "/end", "/tn"])
+            self.assertIn(tw.TASK_UP, args)
+
+    def test_end_swallows_missing_schtasks(self):
+        with mock.patch("automatic_openconnect.tasks_windows.subprocess.run",
+                        side_effect=FileNotFoundError()):
+            tw.end(tw.TASK_UP)  # must not raise
+
+
 class TestIsRegistered(unittest.TestCase):
     def test_true_when_query_succeeds(self):
         with mock.patch("automatic_openconnect.tasks_windows.subprocess.run") as run:
