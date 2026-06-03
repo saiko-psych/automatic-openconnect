@@ -18,6 +18,24 @@ from .config import is_configured
 _STD_OPENCONNECT = r"C:\Program Files\OpenConnect-GUI\openconnect.exe"
 
 
+def connect_step_label(log_text: str) -> str:
+    """Map the latest known marker in the connect log to a coarse step KEY
+    (translated by the GUI). Order matters: check the latest stages first.
+    """
+    t = log_text
+    if "Traceback (most recent call last)" in t or "FAIL:" in t:
+        return "step.failed"
+    if "route configuration done" in t or "Tunnel is up" in t:
+        return "step.almost"
+    if "Starting openconnect.exe" in t or "[openconnect]" in t:
+        return "step.tunnel"
+    if "Authenticating via openconnect-sso" in t:
+        return "step.signing_in"
+    if "bringing tunnel up" in t or "Stopping" in t:
+        return "step.preparing"
+    return "step.connecting"
+
+
 def choose_view(config: dict, registered: bool) -> str:
     """Return 'setup' until config is complete AND tasks are registered."""
     if not is_configured(config) or not registered:
@@ -38,18 +56,18 @@ def detect_openconnect_sso() -> str:
 
 
 def validate_setup_form(fields: dict) -> List[str]:
-    """Return a list of human-readable errors; empty list means valid."""
+    """Return a list of error KEYS (translated by the GUI); empty = valid."""
     errors: List[str] = []
     if not (fields.get("email") or "").strip():
-        errors.append("E-Mail darf nicht leer sein.")
+        errors.append("err.email_empty")
     if not (fields.get("server") or "").strip():
-        errors.append("Server darf nicht leer sein.")
+        errors.append("err.server_empty")
     oc = (fields.get("openconnect_path") or "").strip()
     if not oc or not os.path.exists(oc):
-        errors.append("openconnect.exe wurde unter dem angegebenen Pfad nicht gefunden.")
+        errors.append("err.openconnect_missing")
     sso = (fields.get("openconnect_sso_path") or "").strip()
     if not sso or not os.path.exists(sso):
-        errors.append("openconnect-sso wurde unter dem angegebenen Pfad nicht gefunden.")
+        errors.append("err.sso_missing")
     return errors
 
 

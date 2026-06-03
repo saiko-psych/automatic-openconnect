@@ -64,6 +64,12 @@ from typing import List, Optional, Tuple
 # of platform.
 from .core import VPNError
 
+# Hide the console window of every helper process we spawn. When the app
+# runs the tunnel via the windowless task (pythonw.exe), each console child
+# (net, sc, tasklist, taskkill, openconnect, openconnect-sso) would
+# otherwise pop its own black console window. 0 on non-Windows.
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 
 # --- platform + privilege guards ----------------------------------------
 
@@ -165,6 +171,7 @@ def is_vpn_up(server_hint: str = "univpn") -> bool:
         # UnicodeDecodeError and leave result.stdout=None.
         result = subprocess.run(
             ["tasklist", "/FI", "IMAGENAME eq openconnect.exe", "/NH"],
+            creationflags=_NO_WINDOW,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -187,6 +194,7 @@ def _service_status(name: str) -> Optional[str]:
     try:
         result = subprocess.run(
             ["sc", "query", name],
+            creationflags=_NO_WINDOW,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -236,6 +244,7 @@ def _stop_conflicting_services(cfg: dict) -> List[str]:
             try:
                 subprocess.run(
                     ["net", "stop", svc],
+                    creationflags=_NO_WINDOW,
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
@@ -255,6 +264,7 @@ def _restart_services(services: List[str]) -> None:
         try:
             subprocess.run(
                 ["net", "start", svc],
+                creationflags=_NO_WINDOW,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -303,6 +313,7 @@ def _authenticate(cfg: dict) -> Tuple[str, str, str]:
     try:
         result = subprocess.run(
             cmd,
+            creationflags=_NO_WINDOW,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -371,7 +382,10 @@ def _start_tunnel(host: str, cookie: str, fingerprint: str,
         errors="replace",
         # New process group so Ctrl-C in our process doesn't kill the
         # tunnel prematurely - we control teardown via terminate().
-        creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+        # CREATE_NO_WINDOW so openconnect.exe (a console app) does not pop
+        # its own console window when launched from the windowless task.
+        creationflags=(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                       | getattr(subprocess, "CREATE_NO_WINDOW", 0)),
     )
 
     # Wait for vpnc-script-win.js to finish configuring DNS + routes.
@@ -386,7 +400,7 @@ def _start_tunnel(host: str, cookie: str, fingerprint: str,
     # If we never see the marker within 30s, give up. We also still
     # detect "Configured as" so we can warn that the route config is
     # taking longer than expected.
-    deadline = time.time() + 30
+    deadline = time.time() + 60
     saw_configured = False
     while time.time() < deadline:
         if proc.poll() is not None:
@@ -431,11 +445,11 @@ def _start_tunnel(host: str, cookie: str, fingerprint: str,
     if saw_configured:
         raise VPNError(
             "openconnect.exe set up the tunnel but vpnc-script-win.js "
-            "never finished route configuration within 30s. DNS lookups "
+            "never finished route configuration within 60s. DNS lookups "
             "would race against the workflow start - aborting."
         )
     raise VPNError(
-        "openconnect.exe did not report 'Configured as ...' within 30s"
+        "openconnect.exe did not report 'Configured as ...' within 60s"
     )
 
 
@@ -499,6 +513,7 @@ def _stop_tunnel_by_proc(proc: Optional[subprocess.Popen]) -> None:
     try:
         subprocess.run(
             ["taskkill", "/F", "/IM", "openconnect.exe"],
+            creationflags=_NO_WINDOW,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -577,18 +592,51 @@ def _load_config(path: str = "config.json") -> dict:
         return json.load(f)
 
 
+def connect_log_path(config_path: str) -> str:
+    """Path of the connect log, kept next to config (in ProgramData).
+
+    The task runs windowless (pythonw.exe) and has no console, so the
+    GUI shows this file via its "Log anzeigen" button.
+    """
+    from pathlib import Path
+    return str(Path(config_path).parent / "last-connect.log")
+
+
+def _redirect_output_to_log(config_path: str) -> None:
+    """Tee stdout+stderr to the connect log. Best-effort (a windowless
+    task has nowhere else for the output to go)."""
+    try:
+        log = open(connect_log_path(config_path), "w",
+                   encoding="utf-8", buffering=1)
+        sys.stdout = log
+        sys.stderr = log
+    except OSError:
+        pass
+
+
 def _cli_up(args) -> int:
+    _redirect_output_to_log(args.config)
     cfg = _load_config(args.config)
     cfg.setdefault("auto_vpn", {})
     cfg["auto_vpn"]["enabled"] = True
     print("[auto_vpn_win] CLI mode: bringing tunnel up", file=sys.stderr)
+    from . import session
     try:
         with auto_vpn_session_win(cfg):
             print("[auto_vpn_win] Tunnel is up. Press Ctrl-C to disconnect.",
                   file=sys.stderr)
             try:
+                # Watchdog: if a GUI started this connection and then died
+                # unexpectedly (crash / hard kill) without opting into
+                # background operation, its heartbeat goes stale — tear the
+                # tunnel down so it never lingers invisibly. CLI-only use
+                # (no session file) keeps running indefinitely.
                 while True:
-                    time.sleep(60)
+                    time.sleep(5)
+                    if session.should_teardown(time.time()):
+                        print("[auto_vpn_win] GUI heartbeat lost — tearing "
+                              "down tunnel", file=sys.stderr)
+                        break
             except KeyboardInterrupt:
                 print("\n[auto_vpn_win] Ctrl-C received, tearing down",
                       file=sys.stderr)
@@ -637,7 +685,7 @@ def _build_cli_parser():
                         help="Path to config.json (default: config.json in cwd)")
     parser = argparse.ArgumentParser(
         prog="python -m automatic_openconnect._windows",
-        description="Stand-alone Uni-Graz VPN connect/disconnect for Windows.",
+        description="Stand-alone VPN connect/disconnect for Windows.",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("up", parents=[common],

@@ -33,6 +33,20 @@ class TestBuilders(unittest.TestCase):
         self.assertIn("down", script)
         self.assertIn(r"C:\cfg.json", script)
 
+    def test_register_script_runs_python_directly_no_cmd_wrapper(self):
+        # Regression: the task must run python.exe directly. A cmd.exe
+        # wrapper mangled the --config path via nested quote-stripping, and
+        # `& pause` masked python's real exit code (the failed `up` looked
+        # like success). No cmd, no pause, no backslash-escaped quotes.
+        script = tw.build_register_script(r"C:\py\python.exe", r"C:\cfg.json")
+        self.assertNotIn('\\"', script)          # no backslash-escaped quotes
+        self.assertNotIn("cmd.exe", script)      # no cmd wrapper
+        self.assertNotIn("pause", script)        # no exit-code-masking pause
+        # windowless interpreter so no console window pops up
+        self.assertIn(r"-Execute 'C:\py\pythonw.exe'", script)
+        self.assertNotIn(r"'C:\py\python.exe'", script)
+        self.assertIn('--config "C:\\cfg.json"', script)
+
     def test_elevated_launch_uses_runas_and_encodedcommand(self):
         argv = tw.build_elevated_launch("Write-Host hi")
         joined = " ".join(argv)
@@ -65,6 +79,21 @@ class TestRun(unittest.TestCase):
             run.return_value = subprocess.CompletedProcess([], 1, "", "boom")
             with self.assertRaises(VPNError):
                 tw.run(tw.TASK_DOWN)
+
+
+class TestEnd(unittest.TestCase):
+    def test_end_invokes_schtasks_end(self):
+        with mock.patch("automatic_openconnect.tasks_windows.subprocess.run") as run:
+            run.return_value = subprocess.CompletedProcess([], 0, "", "")
+            tw.end(tw.TASK_UP)
+            args = run.call_args[0][0]
+            self.assertEqual(args[:3], ["schtasks", "/end", "/tn"])
+            self.assertIn(tw.TASK_UP, args)
+
+    def test_end_swallows_missing_schtasks(self):
+        with mock.patch("automatic_openconnect.tasks_windows.subprocess.run",
+                        side_effect=FileNotFoundError()):
+            tw.end(tw.TASK_UP)  # must not raise
 
 
 class TestIsRegistered(unittest.TestCase):

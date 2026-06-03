@@ -50,15 +50,19 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 gui = ["PyQt6>=6.5"]
+# Optional: decode a TOTP QR-code image at setup. Self-contained wheels on
+# Windows (no system deps). Install with: uv tool install --with
+# opencv-python-headless ...
+qr = ["opencv-python-headless>=4.8"]
 
 [project.gui-scripts]
 # Windowed entry point (no console window). Requires the `gui` extra or
 # the PyQt6 that openconnect-sso pulls in via `uv tool install --with PyQt6`.
-uni-graz-vpn = "automatic_openconnect.gui:main"
+automatic-vpn = "automatic_openconnect.gui:main"
 
 [project.scripts]
 # Console-attached variant of the same app, handy for seeing tracebacks.
-uni-graz-vpn-console = "automatic_openconnect.gui:main"
+automatic-vpn-console = "automatic_openconnect.gui:main"
 
 [project.urls]
 Homepage = "https://github.com/saiko-psych/automatic-openconnect"

@@ -65,6 +65,31 @@ class TestBuildAutoVpnConfig(unittest.TestCase):
         self.assertTrue(av["down_on_exit"])
 
 
+class TestConnectStepLabel(unittest.TestCase):
+    def test_empty_log_is_generic(self):
+        self.assertEqual(gl.connect_step_label(""), "step.connecting")
+
+    def test_auth_stage(self):
+        self.assertEqual(
+            gl.connect_step_label("[auto_vpn_win] Authenticating via openconnect-sso ..."),
+            "step.signing_in")
+
+    def test_tunnel_stage(self):
+        log = ("Authenticating via openconnect-sso ...\n"
+               "[auto_vpn_win] Starting openconnect.exe ...")
+        self.assertEqual(gl.connect_step_label(log), "step.tunnel")
+
+    def test_almost_done(self):
+        self.assertEqual(
+            gl.connect_step_label("Legacy IP route configuration done."),
+            "step.almost")
+
+    def test_failure_takes_priority(self):
+        log = ("Starting openconnect.exe ...\n"
+               "Traceback (most recent call last):\n  ...")
+        self.assertEqual(gl.connect_step_label(log), "step.failed")
+
+
 class TestDetect(unittest.TestCase):
     def test_detect_openconnect_prefers_standard_path(self):
         with mock.patch("automatic_openconnect.gui_logic.os.path.exists", return_value=True):
