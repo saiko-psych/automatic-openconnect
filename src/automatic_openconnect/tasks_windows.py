@@ -32,9 +32,15 @@ def build_register_script(python_exe: str, config_path: str) -> str:
     to show any VPNError. RunLevel Highest is required for Wintun.
     """
     def task_block(name: str, sub: str) -> str:
+        # The task action is registered through a PowerShell SINGLE-quoted
+        # -Argument, so double quotes inside are literal — no backslash
+        # escaping (PowerShell does not process \" inside '...'). cmd.exe
+        # needs the classic `/c ""<exe>" <args> & pause"` form: the whole
+        # command wrapped in outer quotes, the exe path in its own quotes.
+        # (Mirrors the verified tools/setup-windows-tasks.ps1 pattern.)
         argline = (f'-m automatic_openconnect._windows {sub} '
-                   f'--config \\"{config_path}\\"')
-        cmdline = f'/c \\"\\"{python_exe}\\" {argline} ^& pause\\"'
+                   f'--config "{config_path}"')
+        cmdline = f'/c ""{python_exe}" {argline} & pause"'
         return (
             f"$a = New-ScheduledTaskAction -Execute 'cmd.exe' "
             f"-Argument '{cmdline}';\n"
