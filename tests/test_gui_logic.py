@@ -28,20 +28,26 @@ class TestValidateSetupForm(unittest.TestCase):
                 "openconnect_sso_path": r"C:\oc\openconnect-sso.exe"}
 
     def test_no_errors_for_valid(self):
-        with mock.patch("os.path.exists", return_value=True):
+        with mock.patch("automatic_openconnect.gui_logic.os.path.exists", return_value=True):
             self.assertEqual(gl.validate_setup_form(self._ok_fields()), [])
 
     def test_error_when_email_blank(self):
         f = self._ok_fields(); f["email"] = ""
-        with mock.patch("os.path.exists", return_value=True):
+        with mock.patch("automatic_openconnect.gui_logic.os.path.exists", return_value=True):
             errs = gl.validate_setup_form(f)
         self.assertTrue(any("mail" in e.lower() for e in errs))
 
     def test_error_when_openconnect_missing(self):
         f = self._ok_fields()
-        with mock.patch("os.path.exists", return_value=False):
+        with mock.patch("automatic_openconnect.gui_logic.os.path.exists", return_value=False):
             errs = gl.validate_setup_form(f)
         self.assertTrue(any("openconnect" in e.lower() for e in errs))
+
+    def test_error_when_email_whitespace_only(self):
+        f = self._ok_fields(); f["email"] = "   "
+        with mock.patch("automatic_openconnect.gui_logic.os.path.exists", return_value=True):
+            errs = gl.validate_setup_form(f)
+        self.assertTrue(any("mail" in e.lower() for e in errs))
 
 
 class TestBuildAutoVpnConfig(unittest.TestCase):
@@ -61,11 +67,17 @@ class TestBuildAutoVpnConfig(unittest.TestCase):
 
 class TestDetect(unittest.TestCase):
     def test_detect_openconnect_prefers_standard_path(self):
-        with mock.patch("os.path.exists", return_value=True):
+        with mock.patch("automatic_openconnect.gui_logic.os.path.exists", return_value=True):
             self.assertTrue(gl.detect_openconnect().endswith("openconnect.exe"))
 
+    def test_detect_openconnect_falls_back_to_which(self):
+        with mock.patch("automatic_openconnect.gui_logic.os.path.exists", return_value=False), \
+             mock.patch("automatic_openconnect.gui_logic.shutil.which",
+                        return_value=r"C:\fallback\openconnect.exe"):
+            self.assertEqual(gl.detect_openconnect(), r"C:\fallback\openconnect.exe")
+
     def test_detect_openconnect_sso_falls_back_to_which(self):
-        with mock.patch("os.path.exists", return_value=False), \
-             mock.patch("shutil.which", return_value=r"C:\x\openconnect-sso.exe"):
+        with mock.patch("automatic_openconnect.gui_logic.os.path.exists", return_value=False), \
+             mock.patch("automatic_openconnect.gui_logic.shutil.which", return_value=r"C:\x\openconnect-sso.exe"):
             self.assertEqual(gl.detect_openconnect_sso(),
                              r"C:\x\openconnect-sso.exe")
