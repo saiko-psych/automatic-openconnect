@@ -23,8 +23,8 @@ from PyQt6.QtCore import Qt, QProcess, QTimer
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QDialog, QFormLayout, QFrame, QHBoxLayout,
-    QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton,
-    QStackedWidget, QVBoxLayout, QWidget,
+    QLabel, QLineEdit, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
+    QStackedWidget, QSystemTrayIcon, QVBoxLayout, QWidget,
 )
 
 from . import config as cfgmod
@@ -270,6 +270,7 @@ class ControlView(QWidget):
         self._on_settings = on_settings
         self._connecting = 0   # >0 while a connect attempt is in flight
         self._failed = False
+        self.on_state = None   # MainWindow sets this to update the tray icon
 
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 24, 28, 24)
@@ -371,6 +372,8 @@ class ControlView(QWidget):
             session.write_heartbeat(time.time(), background_ok=False)
         self.connect_btn.setEnabled(not up and self._connecting == 0)
         self.disconnect_btn.setEnabled(up or self._connecting > 0)
+        if self.on_state:
+            self.on_state(up, self._connecting > 0)
 
     def _connect(self):
         # Proactive prerequisite check: rather than fire a doomed connect and
@@ -433,8 +436,9 @@ class ControlView(QWidget):
 
 
 class MainWindow(QWidget):
-    def __init__(self):
+    def __init__(self, icon=None):
         super().__init__()
+        self._icon = icon or QIcon()
         self.setWindowTitle("automatic VPN")
         self.stack = QStackedWidget()
         outer = QVBoxLayout(self)
@@ -443,11 +447,66 @@ class MainWindow(QWidget):
         self.control = ControlView(on_settings=self._show_setup)
         self.stack.addWidget(self.setup)
         self.stack.addWidget(self.control)
+        self._build_tray()
+        self.control.on_state = self._update_tray
         self._route()
         # Guided first setup: if we're on the setup screen and something is
         # missing, proactively open the checklist (with one-click fixes) so
         # the user is walked through the prerequisites.
         QTimer.singleShot(350, self._maybe_guide_first_setup)
+
+    # --- system tray ----------------------------------------------------
+
+    def _build_tray(self):
+        self.tray = None
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return
+        self.tray = QSystemTrayIcon(self._icon, self)
+        self.tray.setToolTip("automatic VPN")
+        menu = QMenu()
+        self.act_open = menu.addAction("Öffnen")
+        menu.addSeparator()
+        self.act_connect = menu.addAction("Verbinden")
+        self.act_disconnect = menu.addAction("Trennen")
+        menu.addSeparator()
+        self.act_quit = menu.addAction("Beenden")
+        self.tray.setContextMenu(menu)
+        self.act_open.triggered.connect(self._show_window)
+        self.act_connect.triggered.connect(lambda: self.control._connect())
+        self.act_disconnect.triggered.connect(lambda: self.control._disconnect())
+        self.act_quit.triggered.connect(self._quit)
+        self.tray.activated.connect(self._tray_activated)
+        self.tray.show()
+
+    def _tray_activated(self, reason):
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
+            # single left-click toggles the connection
+            if is_vpn_up():
+                self.control._disconnect()
+            else:
+                self.control._connect()
+        elif reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+            self._show_window()
+
+    def _update_tray(self, up, connecting):
+        if self.tray is None:
+            return
+        state = "Verbunden" if up else ("Verbinde …" if connecting else "Getrennt")
+        self.tray.setToolTip(f"automatic VPN — {state}")
+        if hasattr(self, "act_connect"):
+            self.act_connect.setEnabled(not up and not connecting)
+            self.act_disconnect.setEnabled(up or connecting)
+
+    def _show_window(self):
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def _quit(self):
+        if self._perform_exit_teardown():
+            if self.tray is not None:
+                self.tray.hide()
+            QApplication.instance().quit()
 
     def _route(self):
         view = gl.choose_view(cfgmod.load_config(), tw.is_registered())
@@ -476,27 +535,38 @@ class MainWindow(QWidget):
     # --- close behaviour ------------------------------------------------
 
     def closeEvent(self, event):
-        """When closing while connected: ask whether to disconnect or keep
-        the tunnel running in the background (with a 'don't ask again'
-        option). Stop the status timer first so it can't overwrite the
-        final heartbeat we write here."""
+        """The window's X minimises to the tray (the app keeps running and
+        is controlled from the tray icon). Real exit is via the tray's
+        'Beenden'. If there is no system tray, fall back to exit teardown."""
+        if self.tray is not None:
+            event.ignore()
+            self.hide()
+            self.tray.showMessage(
+                "automatic VPN",
+                "Läuft im Hintergrund weiter — über das Tray-Icon steuern.",
+                QSystemTrayIcon.MessageIcon.Information, 3000)
+            return
+        if self._perform_exit_teardown():
+            event.accept()
+        else:
+            event.ignore()
+
+    def _perform_exit_teardown(self) -> bool:
+        """Handle the tunnel on real app exit: ask (disconnect / keep in
+        background) honouring the saved preference. Returns False if the
+        user cancelled (exit should be aborted)."""
         if not is_vpn_up():
             session.clear()
-            event.accept()
-            return
-
+            return True
         data = cfgmod.load_config()
         ui = data.get("ui") or {}
         action = ui.get("close_action", "disconnect")
         if ui.get("ask_on_close", True):
             action = self._ask_close_action(data)
             if action == "cancel":
-                event.ignore()
-                return
-
+                return False
         self.control._timer.stop()
         if action == "background":
-            # Tell the watchdog to leave the tunnel alone.
             session.write_heartbeat(time.time(), background_ok=True)
         else:  # disconnect
             try:
@@ -505,7 +575,7 @@ class MainWindow(QWidget):
             except Exception:
                 pass
             session.clear()
-        event.accept()
+        return True
 
     def _ask_close_action(self, data: dict) -> str:
         """Show the close prompt. Returns 'disconnect' | 'background' |
@@ -551,9 +621,12 @@ def _app_icon() -> QIcon:
 def main() -> int:
     app = QApplication(sys.argv)
     app.setStyleSheet(_STYLESHEET)
+    # Keep the app alive when the window is closed — the tray icon controls
+    # it. Real exit happens via the tray's "Beenden".
+    app.setQuitOnLastWindowClosed(False)
     icon = _app_icon()
     app.setWindowIcon(icon)
-    win = MainWindow()
+    win = MainWindow(icon)
     win.setWindowIcon(icon)
     win.setMinimumSize(560, 520)
     win.resize(640, 560)
