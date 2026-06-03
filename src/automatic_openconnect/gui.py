@@ -16,6 +16,7 @@ from __future__ import annotations
 import sys
 
 import importlib.resources as _ir
+import time
 
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QIcon
@@ -27,6 +28,7 @@ from PyQt6.QtWidgets import (
 
 from . import config as cfgmod
 from . import gui_logic as gl
+from . import session
 from . import tasks_windows as tw
 from ._windows import is_vpn_up, connect_log_path
 from .secrets import set_uni_login_password, set_uni_totp_secret
@@ -229,11 +231,20 @@ class ControlView(QWidget):
         else:
             self._set_dot(_DOT_GREY)
             self.status.setText("Getrennt")
+        # Heartbeat: while this GUI is alive and owns a (pending) connection,
+        # keep the watchdog's timestamp fresh so it does NOT tear the tunnel
+        # down. If the GUI crashes, these writes stop and the up-task tears
+        # the tunnel down within ~15 s.
+        if up or self._connecting > 0:
+            session.write_heartbeat(time.time(), background_ok=False)
         self.connect_btn.setEnabled(not up and self._connecting == 0)
         self.disconnect_btn.setEnabled(up or self._connecting > 0)
 
     def _connect(self):
         try:
+            # Fresh heartbeat BEFORE the task starts so the watchdog sees an
+            # owning GUI from the first moment.
+            session.write_heartbeat(time.time(), background_ok=False)
             tw.end(tw.TASK_UP)   # clear any stale blocking instance first
             tw.run(tw.TASK_UP)
             self._connecting = _CONNECT_TIMEOUT_TICKS
@@ -251,6 +262,7 @@ class ControlView(QWidget):
         try:
             tw.run(tw.TASK_DOWN)
             tw.end(tw.TASK_UP)   # stop the lingering up-loop so reconnect works
+            session.clear()      # no active GUI-owned session anymore
             self._connecting = 0
             self._failed = False
         except Exception as exc:
@@ -298,6 +310,71 @@ class MainWindow(QWidget):
 
     def _show_setup(self):
         self.stack.setCurrentWidget(self.setup)
+
+    # --- close behaviour ------------------------------------------------
+
+    def closeEvent(self, event):
+        """When closing while connected: ask whether to disconnect or keep
+        the tunnel running in the background (with a 'don't ask again'
+        option). Stop the status timer first so it can't overwrite the
+        final heartbeat we write here."""
+        if not is_vpn_up():
+            session.clear()
+            event.accept()
+            return
+
+        data = cfgmod.load_config()
+        ui = data.get("ui") or {}
+        action = ui.get("close_action", "disconnect")
+        if ui.get("ask_on_close", True):
+            action = self._ask_close_action(data)
+            if action == "cancel":
+                event.ignore()
+                return
+
+        self.control._timer.stop()
+        if action == "background":
+            # Tell the watchdog to leave the tunnel alone.
+            session.write_heartbeat(time.time(), background_ok=True)
+        else:  # disconnect
+            try:
+                tw.run(tw.TASK_DOWN)
+                tw.end(tw.TASK_UP)
+            except Exception:
+                pass
+            session.clear()
+        event.accept()
+
+    def _ask_close_action(self, data: dict) -> str:
+        """Show the close prompt. Returns 'disconnect' | 'background' |
+        'cancel'. Persists the choice if 'don't ask again' is ticked."""
+        box = QMessageBox(self)
+        box.setWindowTitle("automatic VPN")
+        box.setText("Der VPN-Tunnel ist noch verbunden.")
+        box.setInformativeText("Möchtest du die Verbindung trennen oder im "
+                               "Hintergrund weiterlaufen lassen?")
+        disconnect_btn = box.addButton("Trennen",
+                                       QMessageBox.ButtonRole.AcceptRole)
+        background_btn = box.addButton("Im Hintergrund lassen",
+                                       QMessageBox.ButtonRole.ActionRole)
+        cancel_btn = box.addButton("Abbrechen",
+                                   QMessageBox.ButtonRole.RejectRole)
+        remember = QCheckBox("Diese Abfrage nicht mehr anzeigen")
+        box.setCheckBox(remember)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is cancel_btn or clicked is None:
+            return "cancel"
+        action = "background" if clicked is background_btn else "disconnect"
+        if remember.isChecked():
+            data.setdefault("ui", {})
+            data["ui"]["ask_on_close"] = False
+            data["ui"]["close_action"] = action
+            try:
+                cfgmod.save_config(data)
+            except OSError:
+                pass
+        return action
 
 
 def _app_icon() -> QIcon:

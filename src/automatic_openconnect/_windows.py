@@ -620,13 +620,23 @@ def _cli_up(args) -> int:
     cfg.setdefault("auto_vpn", {})
     cfg["auto_vpn"]["enabled"] = True
     print("[auto_vpn_win] CLI mode: bringing tunnel up", file=sys.stderr)
+    from . import session
     try:
         with auto_vpn_session_win(cfg):
             print("[auto_vpn_win] Tunnel is up. Press Ctrl-C to disconnect.",
                   file=sys.stderr)
             try:
+                # Watchdog: if a GUI started this connection and then died
+                # unexpectedly (crash / hard kill) without opting into
+                # background operation, its heartbeat goes stale — tear the
+                # tunnel down so it never lingers invisibly. CLI-only use
+                # (no session file) keeps running indefinitely.
                 while True:
-                    time.sleep(60)
+                    time.sleep(5)
+                    if session.should_teardown(time.time()):
+                        print("[auto_vpn_win] GUI heartbeat lost — tearing "
+                              "down tunnel", file=sys.stderr)
+                        break
             except KeyboardInterrupt:
                 print("\n[auto_vpn_win] Ctrl-C received, tearing down",
                       file=sys.stderr)
