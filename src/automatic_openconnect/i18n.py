@@ -18,8 +18,8 @@ _lang = DEFAULT_LANG
 _STRINGS: dict[str, dict[str, str]] = {
     # control view
     "app.subtitle": {
-        "en": "Uni Graz VPN — connect without password & 2FA",
-        "de": "Uni-Graz-VPN — verbinden ohne Passwort & 2FA"},
+        "en": "Connect to your VPN — no password or 2FA typing",
+        "de": "VPN verbinden — ohne Passwort & 2FA tippen"},
     "btn.connect": {"en": "Connect", "de": "Verbinden"},
     "btn.disconnect": {"en": "Disconnect", "de": "Trennen"},
     "btn.show_log": {"en": "Show log", "de": "Log anzeigen"},
@@ -98,9 +98,10 @@ _STRINGS: dict[str, dict[str, str]] = {
     "totp.help_text": {
         "en": ("The TOTP seed is NOT the 6-digit code, but the long base32 "
                "key behind the QR code.\n\n"
-               "How to get it (Uni Graz):\n"
-               "1. In the Uni Graz account portal, open the two-factor / "
-               "authenticator setup and add a new authenticator app.\n"
+               "How to get it:\n"
+               "1. In your account / identity-provider portal, open the "
+               "two-factor / authenticator setup and add a new authenticator "
+               "app.\n"
                "2. A QR code appears. Click “Unable to scan?” — the long "
                "key shown (base32) is your seed.\n"
                "3. Either paste that key into the “TOTP seed” field, or "
@@ -111,10 +112,10 @@ _STRINGS: dict[str, dict[str, str]] = {
                "QR code / seed."),
         "de": ("Der TOTP-Seed ist NICHT der 6-stellige Code, sondern der "
                "lange Base32-Schlüssel hinter dem QR-Code.\n\n"
-               "So bekommst du ihn (Uni Graz):\n"
-               "1. Im Uni-Graz-Account-Portal die Zwei-Faktor-/Authenticator-"
-               "Einrichtung öffnen und eine neue Authenticator-App "
-               "hinzufügen.\n"
+               "So bekommst du ihn:\n"
+               "1. Im Account-/Identity-Provider-Portal die Zwei-Faktor-/"
+               "Authenticator-Einrichtung öffnen und eine neue Authenticator-"
+               "App hinzufügen.\n"
                "2. Es erscheint ein QR-Code. Klick auf „Barcode nicht "
                "scannen?“ — der lange Schlüssel (Base32) ist dein Seed.\n"
                "3. Entweder den Schlüssel ins Feld „TOTP-Seed“ eintragen, "
@@ -138,10 +139,10 @@ _STRINGS: dict[str, dict[str, str]] = {
               "Wintun-Treiber), dann den Pfad im Setup eintragen."},
     "fix.sso": {"en": "Can be installed automatically via uv.",
                 "de": "Kann automatisch per uv installiert werden."},
-    "fix.config": {"en": "The Uni Graz Keycloak template can be created "
-                         "automatically.",
-                   "de": "Die Uni-Graz-Keycloak-Vorlage kann automatisch "
-                         "angelegt werden."},
+    "fix.config": {"en": "The login-field template (config.toml) can be "
+                         "created automatically.",
+                   "de": "Die Login-Felder-Vorlage (config.toml) kann "
+                         "automatisch angelegt werden."},
     "fix.credentials_noemail": {
         "en": "Enter your email in setup, then set password + TOTP seed.",
         "de": "E-Mail im Setup eintragen, dann Passwort + TOTP-Seed setzen."},

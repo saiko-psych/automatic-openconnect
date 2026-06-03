@@ -685,7 +685,7 @@ def _build_cli_parser():
                         help="Path to config.json (default: config.json in cwd)")
     parser = argparse.ArgumentParser(
         prog="python -m automatic_openconnect._windows",
-        description="Stand-alone Uni-Graz VPN connect/disconnect for Windows.",
+        description="Stand-alone VPN connect/disconnect for Windows.",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("up", parents=[common],
