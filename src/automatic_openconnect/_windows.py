@@ -400,7 +400,7 @@ def _start_tunnel(host: str, cookie: str, fingerprint: str,
     # If we never see the marker within 30s, give up. We also still
     # detect "Configured as" so we can warn that the route config is
     # taking longer than expected.
-    deadline = time.time() + 30
+    deadline = time.time() + 60
     saw_configured = False
     while time.time() < deadline:
         if proc.poll() is not None:
@@ -445,11 +445,11 @@ def _start_tunnel(host: str, cookie: str, fingerprint: str,
     if saw_configured:
         raise VPNError(
             "openconnect.exe set up the tunnel but vpnc-script-win.js "
-            "never finished route configuration within 30s. DNS lookups "
+            "never finished route configuration within 60s. DNS lookups "
             "would race against the workflow start - aborting."
         )
     raise VPNError(
-        "openconnect.exe did not report 'Configured as ...' within 30s"
+        "openconnect.exe did not report 'Configured as ...' within 60s"
     )
 
 

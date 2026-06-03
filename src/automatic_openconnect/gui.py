@@ -39,9 +39,11 @@ from . import tasks_windows as tw
 from ._windows import is_vpn_up, connect_log_path
 from .secrets import set_uni_login_password, set_uni_totp_secret
 
-# How many 3-second status polls to wait for the tunnel before declaring
-# the connect attempt failed (~36 s — auth + tunnel usually take 10-25 s).
-_CONNECT_TIMEOUT_TICKS = 12
+# How many 2-second status polls to wait for the tunnel before declaring
+# the connect attempt failed. Must exceed the backend's worst case (auth +
+# tunnel + orphaned-adapter cleanup can take ~60 s), so the GUI doesn't
+# give up while the connection is actually still succeeding. ~70 s.
+_CONNECT_TIMEOUT_TICKS = 35
 
 # Status-dot colours per state.
 _DOT_GREEN = "#3ba55d"   # connected
