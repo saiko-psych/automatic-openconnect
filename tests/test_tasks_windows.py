@@ -41,11 +41,13 @@ class TestBuilders(unittest.TestCase):
         self.assertIn("EncodedCommand", joined)
 
     def test_elevated_launch_encodes_script_as_utf16le_base64(self):
+        import re
         inner = "Write-Host hi"
         argv = tw.build_elevated_launch(inner)
-        # the base64 token must decode (utf-16-le) back to the inner script
-        token = argv[-1].strip("'\"")
-        decoded = base64.b64decode(token).decode("utf-16-le")
+        cmd = argv[-1]
+        m = re.search(r"'-EncodedCommand','([A-Za-z0-9+/=]+)'", cmd)
+        self.assertIsNotNone(m)
+        decoded = base64.b64decode(m.group(1)).decode("utf-16-le")
         self.assertEqual(decoded, inner)
 
 

@@ -56,25 +56,16 @@ def build_elevated_launch(inner_script: str) -> List[str]:
     Encodes the inner script as UTF-16LE base64 (PowerShell -EncodedCommand
     convention) to dodge nested-quote hell, then asks the *outer*
     PowerShell to Start-Process an elevated child with -Verb RunAs -Wait.
-
-    The returned argv ends with the quoted base64 token (``'<b64>'``) as a
-    discrete element so callers/tests can extract it via
-    ``argv[-1].strip("'\"")``.
-
-    When ``subprocess.run`` receives this list on Windows, the CRT
-    command-line builder joins the elements with spaces, producing a valid
-    single PowerShell statement.
+    The whole Start-Process statement is a single -Command string so
+    PowerShell parses it as one statement.
     """
     encoded = base64.b64encode(inner_script.encode("utf-16-le")).decode("ascii")
-    # Split the outer PS -Command across multiple argv elements.
-    # subprocess on Windows quotes and joins them; PowerShell's -Command
-    # then concatenates the remaining args with spaces to form one statement.
-    return [
-        "powershell", "-NoProfile", "-Command",
-        "Start-Process powershell -Verb RunAs -Wait"
-        " -ArgumentList '-NoProfile','-EncodedCommand',",
-        f"'{encoded}'",
-    ]
+    inner_args = f"'-NoProfile','-EncodedCommand','{encoded}'"
+    outer = (
+        f"Start-Process powershell -Verb RunAs -Wait "
+        f"-ArgumentList {inner_args}"
+    )
+    return ["powershell", "-NoProfile", "-Command", outer]
 
 
 def register(python_exe: str, config_path: str) -> None:
