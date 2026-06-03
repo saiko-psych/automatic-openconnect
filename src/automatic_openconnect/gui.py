@@ -52,8 +52,10 @@ class SetupView(QWidget):
         form.addRow("Server", self.server)
         form.addRow("openconnect.exe", self.oc)
         form.addRow("openconnect-sso", self.sso)
-        form.addRow("Passwort (leer = behalten)", self.pw)
-        form.addRow("TOTP-Seed (leer = behalten)", self.totp)
+        self.pw.setPlaceholderText("nur ausfüllen, um es zu ändern")
+        self.totp.setPlaceholderText("base32-Seed — nur ausfüllen, um ihn zu ändern")
+        form.addRow("Passwort", self.pw)
+        form.addRow("TOTP-Seed", self.totp)
         form.addRow(self.stop_cisco)
         form.addRow(self.stop_mullvad)
 
@@ -98,15 +100,19 @@ class SetupView(QWidget):
 
 
 class ControlView(QWidget):
-    def __init__(self):
+    def __init__(self, on_settings):
         super().__init__()
+        self._on_settings = on_settings
         layout = QVBoxLayout(self)
         self.status = QLabel("…")
         self.connect_btn = QPushButton("Verbinden")
         self.disconnect_btn = QPushButton("Trennen")
+        self.settings_btn = QPushButton("Neu einrichten…")
         self.connect_btn.clicked.connect(self._connect)
         self.disconnect_btn.clicked.connect(self._disconnect)
-        for w in (self.status, self.connect_btn, self.disconnect_btn):
+        self.settings_btn.clicked.connect(lambda: self._on_settings())
+        for w in (self.status, self.connect_btn, self.disconnect_btn,
+                  self.settings_btn):
             layout.addWidget(w)
 
         self._timer = QTimer(self)
@@ -143,7 +149,7 @@ class MainWindow(QWidget):
         outer = QVBoxLayout(self)
         outer.addWidget(self.stack)
         self.setup = SetupView(on_done=self._show_control)
-        self.control = ControlView()
+        self.control = ControlView(on_settings=self._show_setup)
         self.stack.addWidget(self.setup)
         self.stack.addWidget(self.control)
         self._route()
@@ -156,11 +162,15 @@ class MainWindow(QWidget):
         self.control.refresh()
         self.stack.setCurrentWidget(self.control)
 
+    def _show_setup(self):
+        self.stack.setCurrentWidget(self.setup)
+
 
 def main() -> int:
     app = QApplication(sys.argv)
     win = MainWindow()
-    win.resize(460, 360)
+    win.setMinimumSize(620, 520)
+    win.resize(720, 560)
     win.show()
     return app.exec()
 
