@@ -33,17 +33,17 @@ class TestBuilders(unittest.TestCase):
         self.assertIn("down", script)
         self.assertIn(r"C:\cfg.json", script)
 
-    def test_register_script_uses_cmd_quoting_not_backslash_escapes(self):
-        # Regression: the task action is registered via a PowerShell
-        # single-quoted -Argument, so backslash-escaped quotes (\") would be
-        # stored literally and cmd.exe could not parse them — the tunnel
-        # would never start. The command must use real cmd `/c ""exe" ...`
-        # quoting and a plain `& pause` (no `^&`).
+    def test_register_script_runs_python_directly_no_cmd_wrapper(self):
+        # Regression: the task must run python.exe directly. A cmd.exe
+        # wrapper mangled the --config path via nested quote-stripping, and
+        # `& pause` masked python's real exit code (the failed `up` looked
+        # like success). No cmd, no pause, no backslash-escaped quotes.
         script = tw.build_register_script(r"C:\py\python.exe", r"C:\cfg.json")
-        self.assertNotIn('\\"', script)   # no backslash-escaped quotes
-        self.assertNotIn("^&", script)    # plain & inside the quoted command
-        self.assertIn('/c ""', script)    # cmd /c with the exe in its own quotes
-        self.assertIn("& pause", script)
+        self.assertNotIn('\\"', script)          # no backslash-escaped quotes
+        self.assertNotIn("cmd.exe", script)      # no cmd wrapper
+        self.assertNotIn("pause", script)        # no exit-code-masking pause
+        self.assertIn(r"-Execute 'C:\py\python.exe'", script)
+        self.assertIn('--config "C:\\cfg.json"', script)
 
     def test_elevated_launch_uses_runas_and_encodedcommand(self):
         argv = tw.build_elevated_launch("Write-Host hi")

@@ -27,23 +27,26 @@ TASK_DOWN = "AutoOpenconnect-Down"
 def build_register_script(python_exe: str, config_path: str) -> str:
     """Return the PowerShell that registers both tasks (runs elevated).
 
-    Each task runs ``cmd.exe /c "<python> -m automatic_openconnect._windows
-    <up|down> --config <cfg> & pause"`` so the elevated console stays open
-    to show any VPNError. RunLevel Highest is required for Wintun.
+    Each task runs ``python.exe`` DIRECTLY — there is deliberately NO
+    ``cmd.exe`` wrapper. The previous ``cmd /c "... & pause"`` form was
+    doubly broken: nested cmd quote-stripping mangled the ``--config``
+    path, and ``& pause`` masked python's real exit code (cmd reported
+    pause's success, hiding a failed ``up``). Running python directly —
+    exactly what a working manual elevated invocation does — avoids both.
+    Task Scheduler passes ``-Argument`` straight to the executable, so the
+    quoted config path survives into ``sys.argv``. RunLevel Highest is
+    required for the Wintun adapter.
     """
     def task_block(name: str, sub: str) -> str:
-        # The task action is registered through a PowerShell SINGLE-quoted
-        # -Argument, so double quotes inside are literal — no backslash
-        # escaping (PowerShell does not process \" inside '...'). cmd.exe
-        # needs the classic `/c ""<exe>" <args> & pause"` form: the whole
-        # command wrapped in outer quotes, the exe path in its own quotes.
-        # (Mirrors the verified tools/setup-windows-tasks.ps1 pattern.)
+        # Registered through a PowerShell SINGLE-quoted -Argument, so the
+        # double quotes around the path are stored literally (PowerShell
+        # does not process them inside '...'); Windows then hands them to
+        # python's argv parser.
         argline = (f'-m automatic_openconnect._windows {sub} '
                    f'--config "{config_path}"')
-        cmdline = f'/c ""{python_exe}" {argline} & pause"'
         return (
-            f"$a = New-ScheduledTaskAction -Execute 'cmd.exe' "
-            f"-Argument '{cmdline}';\n"
+            f"$a = New-ScheduledTaskAction -Execute '{python_exe}' "
+            f"-Argument '{argline}';\n"
             f"$p = New-ScheduledTaskPrincipal -UserId $env:USERNAME "
             f"-LogonType Interactive -RunLevel Highest;\n"
             f"$s = New-ScheduledTaskSettingsSet -StartWhenAvailable "

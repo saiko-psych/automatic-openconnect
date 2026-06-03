@@ -46,8 +46,22 @@ class TestIsConfigured(unittest.TestCase):
 
 
 class TestConfigDir(unittest.TestCase):
-    def test_uses_appdata_when_set(self):
-        with mock.patch.dict("os.environ", {"APPDATA": r"C:\Users\x\AppData\Roaming"}):
+    def test_uses_programdata_when_set(self):
+        # ProgramData (machine-wide) is required so the elevated Scheduled
+        # Task can read the same config the GUI wrote — the task cannot see
+        # the user's AppData. PROGRAMDATA wins over APPDATA.
+        with mock.patch.dict("os.environ",
+                             {"PROGRAMDATA": r"C:\ProgramData",
+                              "APPDATA": r"C:\Users\x\AppData\Roaming"}):
+            self.assertEqual(
+                cfgmod.config_dir(),
+                Path(r"C:\ProgramData") / "automatic-openconnect",
+            )
+
+    def test_falls_back_to_appdata_without_programdata(self):
+        with mock.patch.dict("os.environ",
+                             {"APPDATA": r"C:\Users\x\AppData\Roaming"},
+                             clear=True):
             self.assertEqual(
                 cfgmod.config_dir(),
                 Path(r"C:\Users\x\AppData\Roaming") / "automatic-openconnect",

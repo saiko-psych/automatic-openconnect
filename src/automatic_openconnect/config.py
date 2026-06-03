@@ -21,8 +21,20 @@ APP_NAME = "automatic-openconnect"
 
 
 def config_dir() -> Path:
-    """Per-user config directory. %APPDATA% on Windows, ~/.config elsewhere."""
-    base = os.environ.get("APPDATA") or str(Path.home() / ".config")
+    """Machine-wide config directory.
+
+    On Windows this is ``%PROGRAMDATA%\\automatic-openconnect`` (i.e.
+    ``C:\\ProgramData\\...``), NOT the user's ``%APPDATA%``. The elevated
+    Scheduled Task that brings the VPN up runs in a session where the
+    user's per-profile AppData (both Roaming and Local) is not visible —
+    it appears empty — but ``C:\\ProgramData`` is visible identically to
+    both the GUI and the task. Config holds no secrets (those live in the
+    OS keyring), so a machine-wide location is appropriate. Falls back to
+    ``~/.config`` on platforms without %PROGRAMDATA%/%APPDATA% (Linux/macOS).
+    """
+    base = (os.environ.get("PROGRAMDATA")
+            or os.environ.get("APPDATA")
+            or str(Path.home() / ".config"))
     return Path(base) / APP_NAME
 
 
