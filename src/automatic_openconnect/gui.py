@@ -17,13 +17,14 @@ import sys
 
 import importlib.resources as _ir
 import time
+import webbrowser
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QProcess, QTimer
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
-    QApplication, QCheckBox, QDialog, QFormLayout, QHBoxLayout, QLabel,
-    QLineEdit, QMessageBox, QPlainTextEdit, QPushButton, QStackedWidget,
-    QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QDialog, QFormLayout, QFrame, QHBoxLayout,
+    QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton,
+    QStackedWidget, QVBoxLayout, QWidget,
 )
 
 from . import config as cfgmod
@@ -72,33 +73,114 @@ QCheckBox { spacing: 8px; }
 """
 
 
-def show_preflight_dialog(parent, email: str, oc_path: str,
-                          sso_path: str) -> None:
-    """Run the prerequisites check and show a checklist with fixes."""
-    checks = preflight.check_all(email=email or None,
-                                 openconnect_path=oc_path,
-                                 openconnect_sso_path=sso_path)
-    lines = []
-    for c in checks:
-        mark = "OK  " if c.ok else "FEHLT  "
-        lines.append(f"[{mark.strip()}] {c.name}")
-        if not c.ok and c.fix:
-            lines.append(f"        → {c.fix}")
-        lines.append("")
-    if preflight.all_ok(checks):
-        lines.append("Alles bereit — du kannst dich verbinden.")
-    else:
-        lines.append("Bitte die mit FEHLT markierten Punkte erledigen.")
+_FIX_LABELS = {
+    "open_download": "Download-Seite öffnen",
+    "install_sso": "Jetzt installieren",
+    "create_config": "config.toml anlegen",
+    "open_setup": "Zum Setup",
+}
 
-    dlg = QDialog(parent)
-    dlg.setWindowTitle("Voraussetzungen")
-    dlg.resize(640, 360)
-    v = QVBoxLayout(dlg)
-    view = QPlainTextEdit()
-    view.setReadOnly(True)
-    view.setPlainText("\n".join(lines))
-    v.addWidget(view)
-    dlg.exec()
+
+class PreflightDialog(QDialog):
+    """Prerequisites checklist with one-click fixes where possible."""
+
+    def __init__(self, parent, email, oc_path, sso_path, on_setup=None):
+        super().__init__(parent)
+        self._email, self._oc, self._sso = email, oc_path, sso_path
+        self._on_setup = on_setup
+        self._proc = None
+        self.setWindowTitle("Voraussetzungen")
+        self.resize(720, 460)
+        self._root = QVBoxLayout(self)
+        self._rebuild()
+
+    def _clear(self):
+        while self._root.count():
+            item = self._root.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+
+    def _rebuild(self):
+        self._clear()
+        checks = preflight.check_all(self._email or None, self._oc, self._sso)
+        for c in checks:
+            self._root.addWidget(self._row(c))
+        foot = QLabel("Alles bereit — du kannst dich verbinden."
+                      if preflight.all_ok(checks)
+                      else "Erledige die offenen Punkte — die Buttons helfen.")
+        foot.setObjectName("subheader")
+        self._root.addWidget(foot)
+        self._root.addStretch(1)
+
+    def _row(self, c) -> QFrame:
+        frame = QFrame()
+        v = QVBoxLayout(frame)
+        v.setContentsMargins(0, 4, 0, 4)
+        head = QLabel(f"[{'OK' if c.ok else 'FEHLT'}]  {c.name}")
+        head.setStyleSheet(
+            "font-weight:600; color:%s;" % ("#3ba55d" if c.ok else "#e0a23c"))
+        v.addWidget(head)
+        if not c.ok:
+            if c.fix:
+                fix = QLabel(c.fix)
+                fix.setWordWrap(True)
+                fix.setObjectName("subheader")
+                v.addWidget(fix)
+            if c.action in _FIX_LABELS:
+                btn = QPushButton(_FIX_LABELS[c.action])
+                btn.clicked.connect(lambda _, a=c.action, b=None: self._do(a))
+                v.addWidget(btn, alignment=Qt.AlignmentFlag.AlignLeft)
+        return frame
+
+    def _do(self, action: str):
+        if action == "open_download":
+            webbrowser.open(preflight.OPENCONNECT_GUI_RELEASES)
+        elif action == "create_config":
+            try:
+                p = preflight.create_config_toml()
+                QMessageBox.information(self, "Angelegt",
+                                        f"config.toml angelegt:\n{p}")
+            except OSError as exc:
+                QMessageBox.critical(self, "Fehler", str(exc))
+            self._rebuild()
+        elif action == "install_sso":
+            self._install_sso()
+        elif action == "open_setup":
+            if self._on_setup:
+                self._on_setup()
+            self.accept()
+
+    def _install_sso(self):
+        if self._proc is not None:
+            return
+        cmd = preflight.install_sso_command()
+        self._proc = QProcess(self)
+        self._proc.finished.connect(self._sso_done)
+        self._clear()
+        self._root.addWidget(QLabel("openconnect-sso wird installiert … "
+                                    "(kann 1–2 Minuten dauern)"))
+        self._proc.start(cmd[0], cmd[1:])
+        if not self._proc.waitForStarted(5000):
+            QMessageBox.critical(self, "Fehler",
+                                 "uv nicht gefunden. Bitte uv installieren "
+                                 "oder openconnect-sso manuell einrichten.")
+            self._proc = None
+            self._rebuild()
+
+    def _sso_done(self, code, _status):
+        ok = (code == 0)
+        self._proc = None
+        QMessageBox.information(
+            self, "Installation",
+            "openconnect-sso wurde installiert."
+            if ok else "Installation fehlgeschlagen (Exit %s)." % code)
+        self._rebuild()
+
+
+def show_preflight_dialog(parent, email: str, oc_path: str, sso_path: str,
+                          on_setup=None) -> None:
+    PreflightDialog(parent, email, oc_path, sso_path, on_setup).exec()
 
 
 class SetupView(QWidget):
@@ -240,7 +322,8 @@ class ControlView(QWidget):
         av = (cfgmod.load_config().get("auto_vpn") or {})
         show_preflight_dialog(self, av.get("user_email", ""),
                               av.get("openconnect_path", ""),
-                              av.get("openconnect_sso_path", ""))
+                              av.get("openconnect_sso_path", ""),
+                              on_setup=self._on_settings)
 
     def _set_dot(self, color: str) -> None:
         self.dot.setStyleSheet(f"background-color: {color};")
@@ -300,7 +383,8 @@ class ControlView(QWidget):
         if not preflight.all_ok(checks):
             show_preflight_dialog(self, av.get("user_email", ""),
                                   av.get("openconnect_path", ""),
-                                  av.get("openconnect_sso_path", ""))
+                                  av.get("openconnect_sso_path", ""),
+                                  on_setup=self._on_settings)
             return
         try:
             # Fresh heartbeat BEFORE the task starts so the watchdog sees an
@@ -360,10 +444,27 @@ class MainWindow(QWidget):
         self.stack.addWidget(self.setup)
         self.stack.addWidget(self.control)
         self._route()
+        # Guided first setup: if we're on the setup screen and something is
+        # missing, proactively open the checklist (with one-click fixes) so
+        # the user is walked through the prerequisites.
+        QTimer.singleShot(350, self._maybe_guide_first_setup)
 
     def _route(self):
         view = gl.choose_view(cfgmod.load_config(), tw.is_registered())
         self.stack.setCurrentWidget(self.setup if view == "setup" else self.control)
+
+    def _maybe_guide_first_setup(self):
+        if self.stack.currentWidget() is not self.setup:
+            return
+        av = (cfgmod.load_config().get("auto_vpn") or {})
+        checks = preflight.check_all(av.get("user_email") or None,
+                                     av.get("openconnect_path", ""),
+                                     av.get("openconnect_sso_path", ""))
+        if not preflight.all_ok(checks):
+            show_preflight_dialog(self, av.get("user_email", ""),
+                                  av.get("openconnect_path", ""),
+                                  av.get("openconnect_sso_path", ""),
+                                  on_setup=self._show_setup)
 
     def _show_control(self):
         self.control.refresh()

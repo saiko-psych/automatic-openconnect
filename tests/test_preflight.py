@@ -27,14 +27,15 @@ class TestOpenconnect(unittest.TestCase):
 
 
 class TestOpenconnectSso(unittest.TestCase):
-    def test_missing_gives_uv_hint(self):
+    def test_missing_offers_uv_install(self):
         with mock.patch("automatic_openconnect.preflight.os.path.exists",
                         return_value=False), \
              mock.patch("automatic_openconnect.preflight.detect_openconnect_sso",
                         return_value=""):
             c = preflight.check_openconnect_sso("")
         self.assertFalse(c.ok)
-        self.assertIn("uv tool install", c.fix)
+        self.assertIn("uv", c.fix.lower())
+        self.assertEqual(c.action, "install_sso")
 
 
 class TestCredentials(unittest.TestCase):
@@ -57,6 +58,40 @@ class TestCredentials(unittest.TestCase):
                         return_value=None):
             c = preflight.check_credentials("x@uni-graz.at")
         self.assertFalse(c.ok)
+
+
+class TestAutoFixes(unittest.TestCase):
+    def test_config_check_offers_create_action(self):
+        with mock.patch("automatic_openconnect.preflight.os.path.exists",
+                        return_value=False):
+            c = preflight.check_config_toml()
+        self.assertFalse(c.ok)
+        self.assertEqual(c.action, "create_config")
+
+    def test_sso_check_offers_install_action(self):
+        with mock.patch("automatic_openconnect.preflight.os.path.exists",
+                        return_value=False), \
+             mock.patch("automatic_openconnect.preflight.detect_openconnect_sso",
+                        return_value=""):
+            c = preflight.check_openconnect_sso("")
+        self.assertEqual(c.action, "install_sso")
+
+    def test_create_config_writes_template(self):
+        import os as _os
+        import tempfile
+        target = _os.path.join(tempfile.mkdtemp(), "oc", "config.toml")
+        with mock.patch("automatic_openconnect.preflight.CONFIG_TOML", target):
+            p = preflight.create_config_toml()
+        self.assertEqual(p, target)
+        with open(target, encoding="utf-8") as f:
+            content = f.read()
+        self.assertIn("univpn.uni-graz.at", content)
+        self.assertIn('fill = "totp"', content)
+
+    def test_install_sso_command(self):
+        cmd = preflight.install_sso_command()
+        self.assertEqual(cmd[:3], ["uv", "tool", "install"])
+        self.assertIn("openconnect-sso", cmd)
 
 
 class TestCheckAll(unittest.TestCase):

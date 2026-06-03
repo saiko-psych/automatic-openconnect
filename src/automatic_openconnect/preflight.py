@@ -23,11 +23,19 @@ CONFIG_TOML = os.path.join(os.path.expanduser("~"), ".config",
                            "openconnect-sso", "config.toml")
 
 
+# openconnect-gui releases page (provides openconnect.exe + Wintun driver).
+OPENCONNECT_GUI_RELEASES = \
+    "https://github.com/openconnect/openconnect-gui/releases"
+
+
 @dataclass
 class Check:
     name: str
     ok: bool
-    fix: str = ""   # instruction shown when not ok
+    fix: str = ""        # instruction shown when not ok
+    action: str = ""     # machine key the GUI maps to a fix button:
+    #                      "open_download" | "install_sso" | "create_config"
+    #                      | "open_setup"  (empty = no automated action)
 
 
 def check_openconnect(path: str = "") -> Check:
@@ -37,8 +45,8 @@ def check_openconnect(path: str = "") -> Check:
         "openconnect.exe — VPN-Engine", ok,
         "" if ok else
         "openconnect-gui installieren (enthält openconnect.exe + Wintun-"
-        "Treiber): https://github.com/openconnect/openconnect-gui/releases — "
-        "danach den Pfad im Setup eintragen.",
+        "Treiber), dann den Pfad im Setup eintragen.",
+        "" if ok else "open_download",
     )
 
 
@@ -48,8 +56,8 @@ def check_openconnect_sso(path: str = "") -> Check:
     return Check(
         "openconnect-sso — Login", ok,
         "" if ok else
-        'In PowerShell installieren:  uv tool install --with PyQt6 '
-        '--with "setuptools<70" openconnect-sso',
+        "Kann automatisch per uv installiert werden.",
+        "" if ok else "install_sso",
     )
 
 
@@ -58,8 +66,8 @@ def check_config_toml() -> Check:
     return Check(
         "config.toml — Login-Felder", ok,
         "" if ok else
-        f"Fehlt unter {CONFIG_TOML}. Die Uni-Graz-Keycloak-Selektoren-Datei "
-        "dort anlegen (Vorlage/Anleitung siehe README, UTF-8 ohne BOM).",
+        "Die Uni-Graz-Keycloak-Vorlage kann automatisch angelegt werden.",
+        "" if ok else "create_config",
     )
 
 
@@ -68,6 +76,7 @@ def check_credentials(email: Optional[str]) -> Check:
         return Check(
             "Zugangsdaten im Keyring", False,
             "E-Mail im Setup eintragen, dann Passwort + TOTP-Seed setzen.",
+            "open_setup",
         )
     try:
         from .secrets import get_uni_login_password, get_uni_totp_secret
@@ -78,9 +87,66 @@ def check_credentials(email: Optional[str]) -> Check:
     return Check(
         "Zugangsdaten im Keyring", ok,
         "" if ok else
-        "Passwort + TOTP-Seed im Setup eintragen (werden sicher im "
-        "Windows-Tresor gespeichert).",
+        "Passwort + TOTP-Seed im Setup eintragen (sicher im Windows-Tresor).",
+        "" if ok else "open_setup",
     )
+
+
+# --- automated fixes ----------------------------------------------------
+
+CONFIG_TOML_TEMPLATE = '''\
+on_disconnect = ""
+
+[default_profile]
+address = "univpn.uni-graz.at"
+user_group = ""
+name = ""
+
+[auto_fill_rules]
+[[auto_fill_rules."https://login.uni-graz.at/*"]]
+selector = "input#username"
+fill = "username"
+
+[[auto_fill_rules."https://login.uni-graz.at/*"]]
+selector = "input#password"
+fill = "password"
+
+[[auto_fill_rules."https://login.uni-graz.at/*"]]
+selector = "input#kc-login"
+action = "click"
+
+[[auto_fill_rules."https://login.uni-graz.at/*"]]
+selector = "input[name=otp]"
+fill = "totp"
+
+[[auto_fill_rules."https://login.uni-graz.at/*"]]
+selector = "input#kc-login"
+action = "click"
+
+[[auto_fill_rules."https://login.uni-graz.at/*"]]
+selector = "input#kc-accept"
+action = "click"
+
+[[auto_fill_rules."https://login.uni-graz.at/*"]]
+selector = "span#input-error"
+action = "stop"
+'''
+
+
+def create_config_toml() -> str:
+    """Write the Uni-Graz openconnect-sso config.toml template (UTF-8, no
+    BOM). Returns the path. Raises OSError on failure."""
+    path = CONFIG_TOML
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(CONFIG_TOML_TEMPLATE)
+    return path
+
+
+def install_sso_command() -> List[str]:
+    """argv to install openconnect-sso as a uv tool (network, no admin)."""
+    return ["uv", "tool", "install", "--with", "PyQt6",
+            "--with", "setuptools<70", "openconnect-sso"]
 
 
 def check_all(email: Optional[str] = None,
