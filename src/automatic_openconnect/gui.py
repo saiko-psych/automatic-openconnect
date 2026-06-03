@@ -22,14 +22,15 @@ import webbrowser
 from PyQt6.QtCore import Qt, QProcess, QTimer
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
-    QApplication, QCheckBox, QDialog, QFormLayout, QFrame, QHBoxLayout,
-    QLabel, QLineEdit, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
-    QStackedWidget, QSystemTrayIcon, QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QDialog, QFileDialog, QFormLayout, QFrame,
+    QHBoxLayout, QLabel, QLineEdit, QMenu, QMessageBox, QPlainTextEdit,
+    QPushButton, QStackedWidget, QSystemTrayIcon, QVBoxLayout, QWidget,
 )
 
 from . import config as cfgmod
 from . import gui_logic as gl
 from . import preflight
+from . import qr
 from . import session
 from . import tasks_windows as tw
 from ._windows import is_vpn_up, connect_log_path
@@ -71,6 +72,30 @@ QPlainTextEdit { background-color: #141517; border: 1px solid #3a3d42;
                  font-family: 'Cascadia Mono', Consolas, monospace; }
 QCheckBox { spacing: 8px; }
 """
+
+_TOTP_HELP_TEXT = (
+    "Der TOTP-Seed ist NICHT der 6-stellige Code, sondern der lange "
+    "Base32-Schlüssel hinter dem QR-Code.\n\n"
+    "So bekommst du ihn (Uni Graz):\n"
+    "1. Im Uni-Graz-Account-Portal die Zwei-Faktor-/Authenticator-"
+    "Einrichtung öffnen und eine neue Authenticator-App hinzufügen.\n"
+    "2. Es erscheint ein QR-Code. Klick auf „Sie können den Barcode nicht "
+    "scannen?\" / „Unable to scan?\" — dort steht der lange Schlüssel "
+    "(Base32). Das ist dein Seed.\n"
+    "3. Entweder den Schlüssel hier ins Feld „TOTP-Seed\" eintragen, ODER "
+    "einen Screenshot/Foto des QR-Codes mit „QR-Code-Bild laden…\" "
+    "hochladen — die App liest den Seed automatisch aus.\n\n"
+    "Hinweis: Der Seed wird meist nur EINMAL angezeigt. Hast du ihn nicht "
+    "mehr, registriere eine neue Authenticator-App, um einen neuen QR-Code "
+    "/ Seed zu erhalten."
+)
+
+
+def _wrap(layout) -> QWidget:
+    """Wrap a layout in a QWidget (for QFormLayout.addRow)."""
+    w = QWidget()
+    w.setLayout(layout)
+    return w
 
 
 _FIX_LABELS = {
@@ -211,6 +236,18 @@ class SetupView(QWidget):
         self.totp.setPlaceholderText("base32-Seed — nur ausfüllen, um ihn zu ändern")
         form.addRow("Passwort", self.pw)
         form.addRow("TOTP-Seed", self.totp)
+
+        totp_help = QHBoxLayout()
+        qr_btn = QPushButton("QR-Code-Bild laden…")
+        qr_btn.setObjectName("ghost")
+        qr_btn.clicked.connect(self._load_qr)
+        help_btn = QPushButton("Wie bekomme ich den Seed?")
+        help_btn.setObjectName("ghost")
+        help_btn.clicked.connect(self._show_totp_help)
+        totp_help.addWidget(qr_btn)
+        totp_help.addWidget(help_btn)
+        form.addRow("", _wrap(totp_help))
+
         form.addRow(self.stop_cisco)
         form.addRow(self.stop_mullvad)
 
@@ -227,6 +264,35 @@ class SetupView(QWidget):
     def _check_prereqs(self):
         show_preflight_dialog(self, self.email.text(),
                               self.oc.text(), self.sso.text())
+
+    def _show_totp_help(self):
+        QMessageBox.information(self, "TOTP-Seed finden", _TOTP_HELP_TEXT)
+
+    def _load_qr(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "QR-Code-Bild wählen", "",
+            "Bilder (*.png *.jpg *.jpeg *.bmp *.gif *.webp)")
+        if not path:
+            return
+        try:
+            secret = qr.secret_from_qr_image(path)
+        except qr.QRUnavailable as exc:
+            QMessageBox.warning(self, "QR-Erkennung nicht verfügbar", str(exc))
+            return
+        except Exception as exc:
+            QMessageBox.critical(self, "Fehler beim Lesen", str(exc))
+            return
+        if secret:
+            self.totp.setText(secret)
+            QMessageBox.information(
+                self, "Seed erkannt",
+                "TOTP-Seed aus dem QR-Code übernommen. Mit „Einrichten“ "
+                "speichern.")
+        else:
+            QMessageBox.warning(
+                self, "Kein Seed gefunden",
+                "Im Bild wurde kein TOTP-QR-Code erkannt. Achte auf ein "
+                "scharfes, vollständiges Bild des QR-Codes.")
 
     def _submit(self):
         fields = {
@@ -372,8 +438,16 @@ class ControlView(QWidget):
             session.write_heartbeat(time.time(), background_ok=False)
         self.connect_btn.setEnabled(not up and self._connecting == 0)
         self.disconnect_btn.setEnabled(up or self._connecting > 0)
+        if up:
+            state = "connected"
+        elif self._connecting > 0:
+            state = "connecting"
+        elif self._failed:
+            state = "error"
+        else:
+            state = "disconnected"
         if self.on_state:
-            self.on_state(up, self._connecting > 0)
+            self.on_state(state)
 
     def _connect(self):
         # Proactive prerequisite check: rather than fire a doomed connect and
@@ -461,6 +535,8 @@ class MainWindow(QWidget):
         self.tray = None
         if not QSystemTrayIcon.isSystemTrayAvailable():
             return
+        self._state_icons = {s: _state_icon(s)
+                             for s in ("green", "amber", "blue", "red")}
         self.tray = QSystemTrayIcon(self._icon, self)
         self.tray.setToolTip("automatic VPN")
         menu = QMenu()
@@ -488,14 +564,22 @@ class MainWindow(QWidget):
         elif reason == QSystemTrayIcon.ActivationReason.DoubleClick:
             self._show_window()
 
-    def _update_tray(self, up, connecting):
+    def _update_tray(self, state):
+        # state: connected | connecting | error | disconnected
         if self.tray is None:
             return
-        state = "Verbunden" if up else ("Verbinde …" if connecting else "Getrennt")
-        self.tray.setToolTip(f"automatic VPN — {state}")
+        name = {"connected": "green", "connecting": "amber",
+                "error": "red", "disconnected": "blue"}.get(state, "blue")
+        ic = self._state_icons.get(name)
+        if ic is not None and not ic.isNull():
+            self.tray.setIcon(ic)
+        tip = {"connected": "Verbunden", "connecting": "Verbinde …",
+               "error": "Fehler — Log ansehen",
+               "disconnected": "Getrennt"}.get(state, "")
+        self.tray.setToolTip(f"automatic VPN — {tip}")
         if hasattr(self, "act_connect"):
-            self.act_connect.setEnabled(not up and not connecting)
-            self.act_disconnect.setEnabled(up or connecting)
+            self.act_connect.setEnabled(state in ("disconnected", "error"))
+            self.act_disconnect.setEnabled(state in ("connected", "connecting"))
 
     def _show_window(self):
         self.showNormal()
@@ -613,6 +697,15 @@ def _app_icon() -> QIcon:
     """Load the bundled app icon; empty QIcon if it cannot be found."""
     try:
         p = _ir.files("automatic_openconnect") / "assets" / "icon.ico"
+        return QIcon(str(p))
+    except Exception:
+        return QIcon()
+
+
+def _state_icon(name: str) -> QIcon:
+    """Load a state-coloured tray icon (green/amber/blue/red)."""
+    try:
+        p = _ir.files("automatic_openconnect") / "assets" / f"icon-{name}.ico"
         return QIcon(str(p))
     except Exception:
         return QIcon()
