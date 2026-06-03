@@ -6,16 +6,15 @@
 
 .DESCRIPTION
     Tier 2 Part B for the Windows VPN integration. Run this once as
-    Administrator and three Scheduled Tasks get registered with
+    Administrator and two Scheduled Tasks get registered with
     "Run with highest privileges". From then on, double-clicking the
     desktop shortcuts (or invoking `schtasks /run`) launches each task
     silently elevated — no UAC prompt.
 
-    Three tasks get created:
+    Two tasks get created:
 
-      TerminoVPN-Up    -> python -m utils.auto_vpn_win up
-      TerminoVPN-Down  -> python -m utils.auto_vpn_win down
-      TerminoRun       -> python main.py
+      AutoOpenconnect-Up    -> python -m automatic_openconnect._windows up
+      AutoOpenconnect-Down  -> python -m automatic_openconnect._windows down
 
     Each task is configured as:
       - "Run only when user is logged on" (so the console is visible)
@@ -23,14 +22,14 @@
       - Triggered "On demand" only (no automatic schedule).
 
     For each task we also drop a .lnk shortcut on the Desktop AND in a
-    Start Menu folder "Termino". The shortcut runs:
+    Start Menu folder "AutoOpenconnect". The shortcut runs:
 
       cmd.exe /c "schtasks /run /tn <TaskName>"
 
     which fires the task without UAC.
 
 .PARAMETER ProjectRoot
-    Path to the termino_clean checkout. Defaults to the parent of this
+    Path to the automatic-openconnect checkout. Defaults to the parent of this
     script's folder (so leaving it in tools\ works without arguments).
 
 .PARAMETER PythonExe
@@ -48,7 +47,7 @@
     tasks/shortcuts get updated, not duplicated. Use teardown-windows-tasks.ps1
     to remove everything.
 
-    Verified on 2026-06-02 against the Tier-1 auto_vpn_win module.
+    Verified on 2026-06-03 against the automatic_openconnect package.
 #>
 
 [CmdletBinding()]
@@ -81,12 +80,6 @@ if (-not $ProjectRoot) {
 }
 $ProjectRoot = $ProjectRoot.TrimEnd('\')
 
-if (-not (Test-Path "$ProjectRoot\main.py")) {
-    Write-Host "ERROR: main.py not found at $ProjectRoot\main.py" -ForegroundColor Red
-    Write-Host "  Pass -ProjectRoot <path-to-termino_clean> if running from elsewhere."
-    exit 1
-}
-
 if (-not $PythonExe) {
     $cmd = Get-Command python -ErrorAction SilentlyContinue
     if (-not $cmd) {
@@ -101,8 +94,15 @@ if (-not (Test-Path $PythonExe)) {
     exit 1
 }
 
+& $PythonExe -c "import automatic_openconnect" 2>$null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: 'automatic_openconnect' not importable by $PythonExe." -ForegroundColor Red
+    Write-Host "  Install it first (see README) or pass -PythonExe <the tool's python>."
+    exit 1
+}
+
 Write-Host ""
-Write-Host "=== Termino Windows Task Setup ===" -ForegroundColor Cyan
+Write-Host "=== AutoOpenconnect Windows Task Setup ===" -ForegroundColor Cyan
 Write-Host "ProjectRoot : $ProjectRoot"
 Write-Host "PythonExe   : $PythonExe"
 Write-Host ""
@@ -112,22 +112,16 @@ Write-Host ""
 
 $tasks = @(
     @{
-        Name        = "TerminoVPN-Up"
-        Description = "Bring the Uni-Graz VPN up (auto_vpn_win)."
-        Args        = "-m utils.auto_vpn_win up"
+        Name        = "AutoOpenconnect-Up"
+        Description = "Bring the Uni-Graz VPN up (automatic_openconnect)."
+        Args        = "-m automatic_openconnect._windows up"
         ShortcutName = "Uni-VPN Up"
     },
     @{
-        Name        = "TerminoVPN-Down"
+        Name        = "AutoOpenconnect-Down"
         Description = "Tear down the Uni-Graz VPN and restart Cisco / Mullvad services."
-        Args        = "-m utils.auto_vpn_win down"
+        Args        = "-m automatic_openconnect._windows down"
         ShortcutName = "Uni-VPN Down"
-    },
-    @{
-        Name        = "TerminoRun"
-        Description = "Run the daily Termino workflow (auto_vpn handles VPN around it)."
-        Args        = "main.py"
-        ShortcutName = "Termino starten"
     }
 )
 
@@ -208,7 +202,7 @@ function New-TaskShortcut {
 # ---------- Create shortcuts -------------------------------------------
 
 $desktop  = [Environment]::GetFolderPath('Desktop')
-$startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) "Termino"
+$startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) "AutoOpenconnect"
 
 if (-not $NoStartMenu) {
     if (-not (Test-Path $startMenu)) {
@@ -227,7 +221,7 @@ foreach ($t in $tasks) {
     if (-not $NoStartMenu) {
         $p = Join-Path $startMenu $shortcutName
         New-TaskShortcut -ShortcutPath $p -TaskName $t.Name -Description $t.Description
-        Write-Host "[shortcut] Start Menu\Termino\$shortcutName" -ForegroundColor Green
+        Write-Host "[shortcut] Start Menu\AutoOpenconnect\$shortcutName" -ForegroundColor Green
     }
 }
 
@@ -238,11 +232,11 @@ Write-Host ""
 Write-Host "=== Setup complete ===" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Try it: double-click 'Uni-VPN Up' on your Desktop." -ForegroundColor White
-Write-Host "       A black console window opens, runs auto_vpn_win up,"
+Write-Host "       A black console window opens, runs automatic_openconnect._windows up,"
 Write-Host "       no UAC prompt this time."
 Write-Host ""
 Write-Host "To verify the tasks were created:"
-Write-Host "  schtasks /query /tn TerminoVPN-Up /v /fo list | findstr 'TaskName Status'"
+Write-Host "  schtasks /query /tn AutoOpenconnect-Up /v /fo list | findstr 'TaskName Status'"
 Write-Host ""
 Write-Host "To remove everything: powershell -ExecutionPolicy Bypass -File .\tools\teardown-windows-tasks.ps1"
 Write-Host ""
