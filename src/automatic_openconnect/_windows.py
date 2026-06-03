@@ -205,6 +205,22 @@ def _service_status(name: str) -> Optional[str]:
         return None
 
 
+def _configured_service_targets(cfg: dict) -> List[str]:
+    """Service names this app is configured to manage for a tunnel.
+
+    ``cfg`` is the ``auto_vpn`` sub-dict. Both flags default to True, so
+    a config that omits them keeps the historical "stop Cisco + Mullvad"
+    behavior. Shared by the stop path (_stop_conflicting_services) and
+    the CLI ``down`` restart path so the two never drift apart.
+    """
+    targets = []
+    if cfg.get("stop_cisco_during_run", True):
+        targets.append("csc_vpnagent")
+    if cfg.get("stop_mullvad_during_run", True):
+        targets.append("MullvadVPN")
+    return targets
+
+
 def _stop_conflicting_services(cfg: dict) -> List[str]:
     """Stop services that would compete with openconnect for routing.
 
@@ -212,11 +228,7 @@ def _stop_conflicting_services(cfg: dict) -> List[str]:
     restart them on exit (only the ones we touched).
     """
     stopped = []
-    targets = []
-    if cfg.get("stop_cisco_during_run", True):
-        targets.append("csc_vpnagent")
-    if cfg.get("stop_mullvad_during_run", True):
-        targets.append("MullvadVPN")
+    targets = _configured_service_targets(cfg)
     for svc in targets:
         if _service_status(svc) == "RUNNING":
             print(f"[auto_vpn_win] Stopping {svc} for tunnel duration",
@@ -598,24 +610,47 @@ def _cli_down(args) -> int:
     print("[auto_vpn_win] CLI mode: tearing down any running tunnel",
           file=sys.stderr)
     _stop_tunnel_by_proc(None)
-    _restart_services(["csc_vpnagent", "MullvadVPN"])
+
+    # Only restart the services this app was configured to stop. A user
+    # who unchecked "Mullvad stoppen" must not have it force-started on
+    # `down`. Mirrors auto_vpn_session_win via the shared helper.
+    try:
+        auto_vpn = (_load_config(args.config).get("auto_vpn") or {})
+    except (OSError, ValueError):
+        # No readable config -> fall back to the historical sweep so a
+        # teardown still cleans up after itself (both flags default True).
+        auto_vpn = {}
+    _restart_services(_configured_service_targets(auto_vpn))
     return 0
 
 
-def main_cli() -> int:
+def _build_cli_parser():
+    """Build the stand-alone CLI parser.
+
+    ``--config`` is attached to each subcommand (via a shared parent parser)
+    so both ``... up --config X`` and ``... down --config X`` are accepted —
+    that is the form the registered Scheduled Task uses.
+    """
     import argparse
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--config", default="config.json",
+                        help="Path to config.json (default: config.json in cwd)")
     parser = argparse.ArgumentParser(
         prog="python -m automatic_openconnect._windows",
         description="Stand-alone Uni-Graz VPN connect/disconnect for Windows.",
     )
-    parser.add_argument("--config", default="config.json",
-                        help="Path to config.json (default: config.json in cwd)")
     sub = parser.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("up", help="Bring tunnel up and block until Ctrl-C")
-    sub.add_parser("down", help="Tear down a running tunnel + restart Cisco/Mullvad")
-    sub.add_parser("status", help="Print whether openconnect.exe is running")
-    args = parser.parse_args()
+    sub.add_parser("up", parents=[common],
+                   help="Bring tunnel up and block until Ctrl-C")
+    sub.add_parser("down", parents=[common],
+                   help="Tear down a running tunnel + restart Cisco/Mullvad")
+    sub.add_parser("status", parents=[common],
+                   help="Print whether openconnect.exe is running")
+    return parser
 
+
+def main_cli() -> int:
+    args = _build_cli_parser().parse_args()
     dispatch = {"up": _cli_up, "down": _cli_down, "status": _cli_status}
     return dispatch[args.cmd](args)
 

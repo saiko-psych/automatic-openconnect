@@ -20,6 +20,8 @@ from unittest import mock
 from automatic_openconnect._windows import (
     auto_vpn_session_win,
     is_vpn_up,
+    _build_cli_parser,
+    _cli_down,
 )
 from automatic_openconnect._linux import VPNError
 
@@ -260,6 +262,81 @@ class TestServiceCoexistence(unittest.TestCase):
             result = _stop_conflicting_services(cfg)
             self.assertEqual(result, [])
             run.assert_not_called()
+
+
+class TestCliParser(unittest.TestCase):
+    """The registered Scheduled Task passes `--config` AFTER the subcommand."""
+
+    def test_config_after_up_subcommand(self):
+        args = _build_cli_parser().parse_args(["up", "--config", r"C:\x\config.json"])
+        self.assertEqual(args.cmd, "up")
+        self.assertEqual(args.config, r"C:\x\config.json")
+
+    def test_config_after_down_subcommand(self):
+        args = _build_cli_parser().parse_args(["down", "--config", "c.json"])
+        self.assertEqual(args.cmd, "down")
+        self.assertEqual(args.config, "c.json")
+
+    def test_up_without_config_uses_default(self):
+        args = _build_cli_parser().parse_args(["up"])
+        self.assertEqual(args.config, "config.json")
+
+
+class TestCliDownRespectsConfig(unittest.TestCase):
+    """`down` must only restart the services this app was configured to
+    stop, not blindly force-start Cisco/Mullvad."""
+
+    @staticmethod
+    def _started_services(run_mock):
+        """Service names passed to `net start` across all subprocess calls."""
+        started = []
+        for call in run_mock.call_args_list:
+            argv = call.args[0] if call.args else call.kwargs.get("args", [])
+            if len(argv) >= 3 and argv[0] == "net" and argv[1] == "start":
+                started.append(argv[2])
+        return started
+
+    def test_no_restart_when_both_flags_false(self):
+        args = _build_cli_parser().parse_args(["down", "--config", "c.json"])
+        cfg = {"auto_vpn": {"stop_cisco_during_run": False,
+                            "stop_mullvad_during_run": False}}
+        with mock.patch("automatic_openconnect._windows._load_config",
+                        return_value=cfg), \
+             mock.patch("automatic_openconnect._windows._stop_tunnel_by_proc"), \
+             mock.patch("automatic_openconnect._windows.subprocess.run") as run:
+            self.assertEqual(_cli_down(args), 0)
+            self.assertEqual(self._started_services(run), [])
+
+    def test_restarts_only_mullvad_when_only_mullvad_opted_in(self):
+        args = _build_cli_parser().parse_args(["down", "--config", "c.json"])
+        cfg = {"auto_vpn": {"stop_cisco_during_run": False,
+                            "stop_mullvad_during_run": True}}
+        with mock.patch("automatic_openconnect._windows._load_config",
+                        return_value=cfg), \
+             mock.patch("automatic_openconnect._windows._stop_tunnel_by_proc"), \
+             mock.patch("automatic_openconnect._windows.subprocess.run") as run:
+            _cli_down(args)
+            self.assertEqual(self._started_services(run), ["MullvadVPN"])
+
+    def test_restarts_both_by_default(self):
+        args = _build_cli_parser().parse_args(["down", "--config", "c.json"])
+        with mock.patch("automatic_openconnect._windows._load_config",
+                        return_value={"auto_vpn": {}}), \
+             mock.patch("automatic_openconnect._windows._stop_tunnel_by_proc"), \
+             mock.patch("automatic_openconnect._windows.subprocess.run") as run:
+            _cli_down(args)
+            self.assertEqual(self._started_services(run),
+                             ["csc_vpnagent", "MullvadVPN"])
+
+    def test_falls_back_to_both_when_config_unreadable(self):
+        args = _build_cli_parser().parse_args(["down", "--config", "missing.json"])
+        with mock.patch("automatic_openconnect._windows._load_config",
+                        side_effect=FileNotFoundError()), \
+             mock.patch("automatic_openconnect._windows._stop_tunnel_by_proc"), \
+             mock.patch("automatic_openconnect._windows.subprocess.run") as run:
+            self.assertEqual(_cli_down(args), 0)
+            self.assertEqual(self._started_services(run),
+                             ["csc_vpnagent", "MullvadVPN"])
 
 
 if __name__ == "__main__":
