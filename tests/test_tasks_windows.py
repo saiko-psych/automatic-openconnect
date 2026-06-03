@@ -42,7 +42,9 @@ class TestBuilders(unittest.TestCase):
         self.assertNotIn('\\"', script)          # no backslash-escaped quotes
         self.assertNotIn("cmd.exe", script)      # no cmd wrapper
         self.assertNotIn("pause", script)        # no exit-code-masking pause
-        self.assertIn(r"-Execute 'C:\py\python.exe'", script)
+        # windowless interpreter so no console window pops up
+        self.assertIn(r"-Execute 'C:\py\pythonw.exe'", script)
+        self.assertNotIn(r"'C:\py\python.exe'", script)
         self.assertIn('--config "C:\\cfg.json"', script)
 
     def test_elevated_launch_uses_runas_and_encodedcommand(self):

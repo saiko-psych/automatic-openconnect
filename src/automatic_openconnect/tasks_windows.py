@@ -37,6 +37,13 @@ def build_register_script(python_exe: str, config_path: str) -> str:
     quoted config path survives into ``sys.argv``. RunLevel Highest is
     required for the Wintun adapter.
     """
+    # Use the windowless interpreter (pythonw.exe) so the task does not pop
+    # a console window. python.exe is a console-subsystem app; pythonw.exe
+    # is the GUI-subsystem twin that ships beside it.
+    exe = python_exe
+    if exe.lower().endswith("python.exe"):
+        exe = exe[: -len("python.exe")] + "pythonw.exe"
+
     def task_block(name: str, sub: str) -> str:
         # Registered through a PowerShell SINGLE-quoted -Argument, so the
         # double quotes around the path are stored literally (PowerShell
@@ -45,7 +52,7 @@ def build_register_script(python_exe: str, config_path: str) -> str:
         argline = (f'-m automatic_openconnect._windows {sub} '
                    f'--config "{config_path}"')
         return (
-            f"$a = New-ScheduledTaskAction -Execute '{python_exe}' "
+            f"$a = New-ScheduledTaskAction -Execute '{exe}' "
             f"-Argument '{argline}';\n"
             f"$p = New-ScheduledTaskPrincipal -UserId $env:USERNAME "
             f"-LogonType Interactive -RunLevel Highest;\n"

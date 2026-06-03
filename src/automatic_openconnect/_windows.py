@@ -371,7 +371,10 @@ def _start_tunnel(host: str, cookie: str, fingerprint: str,
         errors="replace",
         # New process group so Ctrl-C in our process doesn't kill the
         # tunnel prematurely - we control teardown via terminate().
-        creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+        # CREATE_NO_WINDOW so openconnect.exe (a console app) does not pop
+        # its own console window when launched from the windowless task.
+        creationflags=(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                       | getattr(subprocess, "CREATE_NO_WINDOW", 0)),
     )
 
     # Wait for vpnc-script-win.js to finish configuring DNS + routes.
@@ -577,7 +580,30 @@ def _load_config(path: str = "config.json") -> dict:
         return json.load(f)
 
 
+def connect_log_path(config_path: str) -> str:
+    """Path of the connect log, kept next to config (in ProgramData).
+
+    The task runs windowless (pythonw.exe) and has no console, so the
+    GUI shows this file via its "Log anzeigen" button.
+    """
+    from pathlib import Path
+    return str(Path(config_path).parent / "last-connect.log")
+
+
+def _redirect_output_to_log(config_path: str) -> None:
+    """Tee stdout+stderr to the connect log. Best-effort (a windowless
+    task has nowhere else for the output to go)."""
+    try:
+        log = open(connect_log_path(config_path), "w",
+                   encoding="utf-8", buffering=1)
+        sys.stdout = log
+        sys.stderr = log
+    except OSError:
+        pass
+
+
 def _cli_up(args) -> int:
+    _redirect_output_to_log(args.config)
     cfg = _load_config(args.config)
     cfg.setdefault("auto_vpn", {})
     cfg["auto_vpn"]["enabled"] = True

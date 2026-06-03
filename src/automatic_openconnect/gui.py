@@ -17,15 +17,20 @@ import sys
 
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import (
-    QApplication, QCheckBox, QFormLayout, QLabel, QLineEdit, QMessageBox,
-    QPushButton, QStackedWidget, QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QDialog, QFormLayout, QLabel, QLineEdit,
+    QMessageBox, QPlainTextEdit, QPushButton, QStackedWidget, QVBoxLayout,
+    QWidget,
 )
 
 from . import config as cfgmod
 from . import gui_logic as gl
 from . import tasks_windows as tw
-from ._windows import is_vpn_up
+from ._windows import is_vpn_up, connect_log_path
 from .secrets import set_uni_login_password, set_uni_totp_secret
+
+# How many 3-second status polls to wait for the tunnel before declaring
+# the connect attempt failed (~36 s — auth + tunnel usually take 10-25 s).
+_CONNECT_TIMEOUT_TICKS = 12
 
 
 class SetupView(QWidget):
@@ -103,16 +108,19 @@ class ControlView(QWidget):
     def __init__(self, on_settings):
         super().__init__()
         self._on_settings = on_settings
+        self._connecting = 0   # >0 while a connect attempt is in flight
         layout = QVBoxLayout(self)
         self.status = QLabel("…")
         self.connect_btn = QPushButton("Verbinden")
         self.disconnect_btn = QPushButton("Trennen")
+        self.log_btn = QPushButton("Log anzeigen")
         self.settings_btn = QPushButton("Neu einrichten…")
         self.connect_btn.clicked.connect(self._connect)
         self.disconnect_btn.clicked.connect(self._disconnect)
+        self.log_btn.clicked.connect(self._show_log)
         self.settings_btn.clicked.connect(lambda: self._on_settings())
         for w in (self.status, self.connect_btn, self.disconnect_btn,
-                  self.settings_btn):
+                  self.log_btn, self.settings_btn):
             layout.addWidget(w)
 
         self._timer = QTimer(self)
@@ -122,15 +130,30 @@ class ControlView(QWidget):
 
     def refresh(self):
         up = is_vpn_up()
-        self.status.setText("🟢 Verbunden" if up else "⚪ Getrennt")
-        self.connect_btn.setEnabled(not up)
-        self.disconnect_btn.setEnabled(up)
+        if up:
+            self._connecting = 0
+            self.status.setText("🟢 Verbunden")
+        elif self._connecting > 0:
+            self._connecting -= 1
+            if self._connecting == 0:
+                self.status.setText(
+                    "⚠️ Verbindung fehlgeschlagen — „Log anzeigen“ für Details")
+            else:
+                self.status.setText("🔄 Verbinde …")
+        else:
+            self.status.setText("⚪ Getrennt")
+        # Connect only when idle+down; disconnect while up or mid-attempt.
+        self.connect_btn.setEnabled(not up and self._connecting == 0)
+        self.disconnect_btn.setEnabled(up or self._connecting > 0)
 
     def _connect(self):
         try:
             tw.end(tw.TASK_UP)   # clear any stale blocking instance first
             tw.run(tw.TASK_UP)
+            self._connecting = _CONNECT_TIMEOUT_TICKS
+            self.status.setText("🔄 Verbinde …")
         except Exception as exc:
+            self._connecting = 0
             QMessageBox.critical(self, "Fehler", str(exc))
         self.refresh()
 
@@ -138,9 +161,27 @@ class ControlView(QWidget):
         try:
             tw.run(tw.TASK_DOWN)
             tw.end(tw.TASK_UP)   # stop the lingering up-loop so reconnect works
+            self._connecting = 0
         except Exception as exc:
             QMessageBox.critical(self, "Fehler", str(exc))
         self.refresh()
+
+    def _show_log(self):
+        path = connect_log_path(str(cfgmod.config_path()))
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except OSError:
+            text = "Noch kein Verbindungs-Log vorhanden."
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Verbindungs-Log")
+        dlg.resize(720, 480)
+        v = QVBoxLayout(dlg)
+        view = QPlainTextEdit()
+        view.setReadOnly(True)
+        view.setPlainText(text)
+        v.addWidget(view)
+        dlg.exec()
 
 
 class MainWindow(QWidget):
