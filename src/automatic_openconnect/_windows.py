@@ -602,20 +602,33 @@ def _cli_down(args) -> int:
     return 0
 
 
-def main_cli() -> int:
+def _build_cli_parser():
+    """Build the stand-alone CLI parser.
+
+    ``--config`` is attached to each subcommand (via a shared parent parser)
+    so both ``... up --config X`` and ``... down --config X`` are accepted —
+    that is the form the registered Scheduled Task uses.
+    """
     import argparse
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--config", default="config.json",
+                        help="Path to config.json (default: config.json in cwd)")
     parser = argparse.ArgumentParser(
         prog="python -m automatic_openconnect._windows",
         description="Stand-alone Uni-Graz VPN connect/disconnect for Windows.",
     )
-    parser.add_argument("--config", default="config.json",
-                        help="Path to config.json (default: config.json in cwd)")
     sub = parser.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("up", help="Bring tunnel up and block until Ctrl-C")
-    sub.add_parser("down", help="Tear down a running tunnel + restart Cisco/Mullvad")
-    sub.add_parser("status", help="Print whether openconnect.exe is running")
-    args = parser.parse_args()
+    sub.add_parser("up", parents=[common],
+                   help="Bring tunnel up and block until Ctrl-C")
+    sub.add_parser("down", parents=[common],
+                   help="Tear down a running tunnel + restart Cisco/Mullvad")
+    sub.add_parser("status", parents=[common],
+                   help="Print whether openconnect.exe is running")
+    return parser
 
+
+def main_cli() -> int:
+    args = _build_cli_parser().parse_args()
     dispatch = {"up": _cli_up, "down": _cli_down, "status": _cli_status}
     return dispatch[args.cmd](args)
 

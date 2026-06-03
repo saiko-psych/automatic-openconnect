@@ -20,6 +20,7 @@ from unittest import mock
 from automatic_openconnect._windows import (
     auto_vpn_session_win,
     is_vpn_up,
+    _build_cli_parser,
 )
 from automatic_openconnect._linux import VPNError
 
@@ -260,6 +261,24 @@ class TestServiceCoexistence(unittest.TestCase):
             result = _stop_conflicting_services(cfg)
             self.assertEqual(result, [])
             run.assert_not_called()
+
+
+class TestCliParser(unittest.TestCase):
+    """The registered Scheduled Task passes `--config` AFTER the subcommand."""
+
+    def test_config_after_up_subcommand(self):
+        args = _build_cli_parser().parse_args(["up", "--config", r"C:\x\config.json"])
+        self.assertEqual(args.cmd, "up")
+        self.assertEqual(args.config, r"C:\x\config.json")
+
+    def test_config_after_down_subcommand(self):
+        args = _build_cli_parser().parse_args(["down", "--config", "c.json"])
+        self.assertEqual(args.cmd, "down")
+        self.assertEqual(args.config, "c.json")
+
+    def test_up_without_config_uses_default(self):
+        args = _build_cli_parser().parse_args(["up"])
+        self.assertEqual(args.config, "config.json")
 
 
 if __name__ == "__main__":
