@@ -49,10 +49,16 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+gui = ["PyQt6>=6.5"]
+
+[project.gui-scripts]
+# Windowed entry point (no console window). Requires the `gui` extra or
+# the PyQt6 that openconnect-sso pulls in via `uv tool install --with PyQt6`.
+uni-graz-vpn = "automatic_openconnect.gui:main"
 
 [project.scripts]
-# CLI lands in Phase 4 (cli.py). Placeholder kept out until then so we
-# don't ship a broken entry point.
+# Console-attached variant of the same app, handy for seeing tracebacks.
+uni-graz-vpn-console = "automatic_openconnect.gui:main"
 
 [project.urls]
 Homepage = "https://github.com/saiko-psych/automatic-openconnect"
