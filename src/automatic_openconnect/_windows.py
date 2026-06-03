@@ -64,6 +64,12 @@ from typing import List, Optional, Tuple
 # of platform.
 from .core import VPNError
 
+# Hide the console window of every helper process we spawn. When the app
+# runs the tunnel via the windowless task (pythonw.exe), each console child
+# (net, sc, tasklist, taskkill, openconnect, openconnect-sso) would
+# otherwise pop its own black console window. 0 on non-Windows.
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 
 # --- platform + privilege guards ----------------------------------------
 
@@ -165,6 +171,7 @@ def is_vpn_up(server_hint: str = "univpn") -> bool:
         # UnicodeDecodeError and leave result.stdout=None.
         result = subprocess.run(
             ["tasklist", "/FI", "IMAGENAME eq openconnect.exe", "/NH"],
+            creationflags=_NO_WINDOW,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -187,6 +194,7 @@ def _service_status(name: str) -> Optional[str]:
     try:
         result = subprocess.run(
             ["sc", "query", name],
+            creationflags=_NO_WINDOW,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -236,6 +244,7 @@ def _stop_conflicting_services(cfg: dict) -> List[str]:
             try:
                 subprocess.run(
                     ["net", "stop", svc],
+                    creationflags=_NO_WINDOW,
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
@@ -255,6 +264,7 @@ def _restart_services(services: List[str]) -> None:
         try:
             subprocess.run(
                 ["net", "start", svc],
+                creationflags=_NO_WINDOW,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -303,6 +313,7 @@ def _authenticate(cfg: dict) -> Tuple[str, str, str]:
     try:
         result = subprocess.run(
             cmd,
+            creationflags=_NO_WINDOW,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -502,6 +513,7 @@ def _stop_tunnel_by_proc(proc: Optional[subprocess.Popen]) -> None:
     try:
         subprocess.run(
             ["taskkill", "/F", "/IM", "openconnect.exe"],
+            creationflags=_NO_WINDOW,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

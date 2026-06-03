@@ -23,6 +23,11 @@ from .core import VPNError
 TASK_UP = "AutoOpenconnect-Up"
 TASK_DOWN = "AutoOpenconnect-Down"
 
+# Hide the console window of schtasks/powershell helpers. The GUI runs
+# windowless (pythonw.exe), so a console child without this flag would pop
+# its own black window. 0 on non-Windows.
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 
 def build_register_script(python_exe: str, config_path: str) -> str:
     """Return the PowerShell that registers both tasks (runs elevated).
@@ -88,7 +93,8 @@ def register(python_exe: str, config_path: str) -> None:
     """Register both tasks elevated. One UAC prompt. Raises on failure."""
     script = build_register_script(python_exe, config_path)
     argv = build_elevated_launch(script)
-    result = subprocess.run(argv, stdin=subprocess.DEVNULL,
+    result = subprocess.run(argv, creationflags=_NO_WINDOW,
+                            stdin=subprocess.DEVNULL,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             text=True, encoding="utf-8", errors="replace")
     if result.returncode != 0:
@@ -104,7 +110,8 @@ def unregister() -> None:
               f"-ErrorAction SilentlyContinue;\n"
               f"Unregister-ScheduledTask -TaskName '{TASK_DOWN}' -Confirm:$false "
               f"-ErrorAction SilentlyContinue;\n")
-    subprocess.run(build_elevated_launch(script), stdin=subprocess.DEVNULL,
+    subprocess.run(build_elevated_launch(script), creationflags=_NO_WINDOW,
+                   stdin=subprocess.DEVNULL,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
@@ -112,6 +119,7 @@ def is_registered() -> bool:
     """True if the Up task exists (proxy for 'setup done'). No elevation."""
     result = subprocess.run(
         ["schtasks", "/query", "/tn", TASK_UP],
+        creationflags=_NO_WINDOW,
         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
         errors="replace",
@@ -131,6 +139,7 @@ def end(task: str) -> None:
     try:
         subprocess.run(
             ["schtasks", "/end", "/tn", task],
+            creationflags=_NO_WINDOW,
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL, timeout=10,
         )
@@ -142,6 +151,7 @@ def run(task: str) -> None:
     """Fire an on-demand task. No elevation. Raises VPNError on failure."""
     result = subprocess.run(
         ["schtasks", "/run", "/tn", task],
+        creationflags=_NO_WINDOW,
         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
         stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
     )

@@ -132,16 +132,16 @@ class ControlView(QWidget):
         up = is_vpn_up()
         if up:
             self._connecting = 0
-            self.status.setText("🟢 Verbunden")
+            self.status.setText("Status: Verbunden")
         elif self._connecting > 0:
             self._connecting -= 1
             if self._connecting == 0:
                 self.status.setText(
-                    "⚠️ Verbindung fehlgeschlagen — „Log anzeigen“ für Details")
+                    "Status: Verbindung fehlgeschlagen — „Log anzeigen“ für Details")
             else:
-                self.status.setText("🔄 Verbinde …")
+                self.status.setText("Status: Verbinde …")
         else:
-            self.status.setText("⚪ Getrennt")
+            self.status.setText("Status: Getrennt")
         # Connect only when idle+down; disconnect while up or mid-attempt.
         self.connect_btn.setEnabled(not up and self._connecting == 0)
         self.disconnect_btn.setEnabled(up or self._connecting > 0)
@@ -151,7 +151,7 @@ class ControlView(QWidget):
             tw.end(tw.TASK_UP)   # clear any stale blocking instance first
             tw.run(tw.TASK_UP)
             self._connecting = _CONNECT_TIMEOUT_TICKS
-            self.status.setText("🔄 Verbinde …")
+            self.status.setText("Status: Verbinde …")
         except Exception as exc:
             self._connecting = 0
             QMessageBox.critical(self, "Fehler", str(exc))
@@ -187,7 +187,7 @@ class ControlView(QWidget):
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Uni Graz VPN")
+        self.setWindowTitle("automatic VPN")
         self.stack = QStackedWidget()
         outer = QVBoxLayout(self)
         outer.addWidget(self.stack)
