@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
 
 from . import config as cfgmod
 from . import gui_logic as gl
+from . import preflight
 from . import session
 from . import tasks_windows as tw
 from ._windows import is_vpn_up, connect_log_path
@@ -71,6 +72,35 @@ QCheckBox { spacing: 8px; }
 """
 
 
+def show_preflight_dialog(parent, email: str, oc_path: str,
+                          sso_path: str) -> None:
+    """Run the prerequisites check and show a checklist with fixes."""
+    checks = preflight.check_all(email=email or None,
+                                 openconnect_path=oc_path,
+                                 openconnect_sso_path=sso_path)
+    lines = []
+    for c in checks:
+        mark = "OK  " if c.ok else "FEHLT  "
+        lines.append(f"[{mark.strip()}] {c.name}")
+        if not c.ok and c.fix:
+            lines.append(f"        → {c.fix}")
+        lines.append("")
+    if preflight.all_ok(checks):
+        lines.append("Alles bereit — du kannst dich verbinden.")
+    else:
+        lines.append("Bitte die mit FEHLT markierten Punkte erledigen.")
+
+    dlg = QDialog(parent)
+    dlg.setWindowTitle("Voraussetzungen")
+    dlg.resize(640, 360)
+    v = QVBoxLayout(dlg)
+    view = QPlainTextEdit()
+    view.setReadOnly(True)
+    view.setPlainText("\n".join(lines))
+    v.addWidget(view)
+    dlg.exec()
+
+
 class SetupView(QWidget):
     def __init__(self, on_done):
         super().__init__()
@@ -102,9 +132,19 @@ class SetupView(QWidget):
         form.addRow(self.stop_cisco)
         form.addRow(self.stop_mullvad)
 
+        check_btn = QPushButton("Voraussetzungen prüfen")
+        check_btn.setObjectName("ghost")
+        check_btn.clicked.connect(self._check_prereqs)
+        form.addRow(check_btn)
+
         btn = QPushButton("Einrichten (einmaliger Admin-Dialog)")
+        btn.setObjectName("primary")
         btn.clicked.connect(self._submit)
         form.addRow(btn)
+
+    def _check_prereqs(self):
+        show_preflight_dialog(self, self.email.text(),
+                              self.oc.text(), self.sso.text())
 
     def _submit(self):
         fields = {
@@ -178,20 +218,29 @@ class ControlView(QWidget):
         self.disconnect_btn = QPushButton("Trennen")
         self.log_btn = QPushButton("Log anzeigen")
         self.log_btn.setObjectName("ghost")
+        self.check_btn = QPushButton("Voraussetzungen prüfen")
+        self.check_btn.setObjectName("ghost")
         self.settings_btn = QPushButton("Neu einrichten…")
         self.settings_btn.setObjectName("ghost")
         self.connect_btn.clicked.connect(self._connect)
         self.disconnect_btn.clicked.connect(self._disconnect)
         self.log_btn.clicked.connect(self._show_log)
+        self.check_btn.clicked.connect(self._check_prereqs)
         self.settings_btn.clicked.connect(lambda: self._on_settings())
         for w in (self.connect_btn, self.disconnect_btn, self.log_btn,
-                  self.settings_btn):
+                  self.check_btn, self.settings_btn):
             root.addWidget(w)
 
         self._timer = QTimer(self)
         self._timer.timeout.connect(self.refresh)
         self._timer.start(2000)
         self.refresh()
+
+    def _check_prereqs(self):
+        av = (cfgmod.load_config().get("auto_vpn") or {})
+        show_preflight_dialog(self, av.get("user_email", ""),
+                              av.get("openconnect_path", ""),
+                              av.get("openconnect_sso_path", ""))
 
     def _set_dot(self, color: str) -> None:
         self.dot.setStyleSheet(f"background-color: {color};")
