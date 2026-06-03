@@ -67,27 +67,27 @@ class TestBuildAutoVpnConfig(unittest.TestCase):
 
 class TestConnectStepLabel(unittest.TestCase):
     def test_empty_log_is_generic(self):
-        self.assertEqual(gl.connect_step_label(""), "Verbinde …")
+        self.assertEqual(gl.connect_step_label(""), "step.connecting")
 
     def test_auth_stage(self):
         self.assertEqual(
             gl.connect_step_label("[auto_vpn_win] Authenticating via openconnect-sso ..."),
-            "Anmeldung läuft …")
+            "step.signing_in")
 
     def test_tunnel_stage(self):
         log = ("Authenticating via openconnect-sso ...\n"
                "[auto_vpn_win] Starting openconnect.exe ...")
-        self.assertEqual(gl.connect_step_label(log), "Tunnel wird aufgebaut …")
+        self.assertEqual(gl.connect_step_label(log), "step.tunnel")
 
     def test_almost_done(self):
         self.assertEqual(
             gl.connect_step_label("Legacy IP route configuration done."),
-            "Fast fertig …")
+            "step.almost")
 
     def test_failure_takes_priority(self):
         log = ("Starting openconnect.exe ...\n"
                "Traceback (most recent call last):\n  ...")
-        self.assertEqual(gl.connect_step_label(log), "Verbindung fehlgeschlagen")
+        self.assertEqual(gl.connect_step_label(log), "step.failed")
 
 
 class TestDetect(unittest.TestCase):

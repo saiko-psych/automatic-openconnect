@@ -23,7 +23,8 @@ class TestOpenconnect(unittest.TestCase):
                         return_value=""):
             c = preflight.check_openconnect("")
         self.assertFalse(c.ok)
-        self.assertIn("openconnect-gui", c.fix)
+        self.assertEqual(c.fix, "fix.openconnect")
+        self.assertEqual(c.action, "open_download")
 
 
 class TestOpenconnectSso(unittest.TestCase):
@@ -34,7 +35,7 @@ class TestOpenconnectSso(unittest.TestCase):
                         return_value=""):
             c = preflight.check_openconnect_sso("")
         self.assertFalse(c.ok)
-        self.assertIn("uv", c.fix.lower())
+        self.assertEqual(c.fix, "fix.sso")
         self.assertEqual(c.action, "install_sso")
 
 

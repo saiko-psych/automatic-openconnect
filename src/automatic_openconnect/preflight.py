@@ -30,66 +30,50 @@ OPENCONNECT_GUI_RELEASES = \
 
 @dataclass
 class Check:
-    name: str
+    name: str        # i18n key, e.g. "check.openconnect"
     ok: bool
-    fix: str = ""        # instruction shown when not ok
-    action: str = ""     # machine key the GUI maps to a fix button:
-    #                      "open_download" | "install_sso" | "create_config"
-    #                      | "open_setup"  (empty = no automated action)
+    fix: str = ""    # i18n key for the instruction shown when not ok
+    action: str = ""  # machine key the GUI maps to a fix button:
+    #                   "open_download" | "install_sso" | "create_config"
+    #                   | "open_setup"  (empty = no automated action)
 
 
 def check_openconnect(path: str = "") -> Check:
     p = (path or "").strip() or detect_openconnect()
     ok = bool(p) and os.path.exists(p)
-    return Check(
-        "openconnect.exe — VPN-Engine", ok,
-        "" if ok else
-        "openconnect-gui installieren (enthält openconnect.exe + Wintun-"
-        "Treiber), dann den Pfad im Setup eintragen.",
-        "" if ok else "open_download",
-    )
+    return Check("check.openconnect", ok,
+                 "" if ok else "fix.openconnect",
+                 "" if ok else "open_download")
 
 
 def check_openconnect_sso(path: str = "") -> Check:
     p = (path or "").strip() or detect_openconnect_sso()
     ok = bool(p) and os.path.exists(p)
-    return Check(
-        "openconnect-sso — Login", ok,
-        "" if ok else
-        "Kann automatisch per uv installiert werden.",
-        "" if ok else "install_sso",
-    )
+    return Check("check.sso", ok,
+                 "" if ok else "fix.sso",
+                 "" if ok else "install_sso")
 
 
 def check_config_toml() -> Check:
     ok = os.path.exists(CONFIG_TOML)
-    return Check(
-        "config.toml — Login-Felder", ok,
-        "" if ok else
-        "Die Uni-Graz-Keycloak-Vorlage kann automatisch angelegt werden.",
-        "" if ok else "create_config",
-    )
+    return Check("check.config", ok,
+                 "" if ok else "fix.config",
+                 "" if ok else "create_config")
 
 
 def check_credentials(email: Optional[str]) -> Check:
     if not email:
-        return Check(
-            "Zugangsdaten im Keyring", False,
-            "E-Mail im Setup eintragen, dann Passwort + TOTP-Seed setzen.",
-            "open_setup",
-        )
+        return Check("check.credentials", False,
+                     "fix.credentials_noemail", "open_setup")
     try:
         from .secrets import get_uni_login_password, get_uni_totp_secret
         ok = bool(get_uni_login_password(email)) and bool(
             get_uni_totp_secret(email))
     except Exception:
         ok = False
-    return Check(
-        "Zugangsdaten im Keyring", ok,
-        "" if ok else
-        "Passwort + TOTP-Seed im Setup eintragen (sicher im Windows-Tresor).",
-        "" if ok else "open_setup",
-    )
+    return Check("check.credentials", ok,
+                 "" if ok else "fix.credentials",
+                 "" if ok else "open_setup")
 
 
 # --- automated fixes ----------------------------------------------------

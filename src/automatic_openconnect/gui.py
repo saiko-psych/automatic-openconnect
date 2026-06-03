@@ -22,13 +22,16 @@ import webbrowser
 from PyQt6.QtCore import Qt, QProcess, QTimer
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
-    QApplication, QCheckBox, QDialog, QFileDialog, QFormLayout, QFrame,
-    QHBoxLayout, QLabel, QLineEdit, QMenu, QMessageBox, QPlainTextEdit,
-    QPushButton, QStackedWidget, QSystemTrayIcon, QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout,
+    QFrame, QHBoxLayout, QLabel, QLineEdit, QMenu, QMessageBox,
+    QPlainTextEdit, QPushButton, QStackedWidget, QSystemTrayIcon,
+    QVBoxLayout, QWidget,
 )
 
 from . import config as cfgmod
 from . import gui_logic as gl
+from . import i18n
+from .i18n import t
 from . import preflight
 from . import qr
 from . import session
@@ -73,24 +76,6 @@ QPlainTextEdit { background-color: #141517; border: 1px solid #3a3d42;
 QCheckBox { spacing: 8px; }
 """
 
-_TOTP_HELP_TEXT = (
-    "Der TOTP-Seed ist NICHT der 6-stellige Code, sondern der lange "
-    "Base32-Schlüssel hinter dem QR-Code.\n\n"
-    "So bekommst du ihn (Uni Graz):\n"
-    "1. Im Uni-Graz-Account-Portal die Zwei-Faktor-/Authenticator-"
-    "Einrichtung öffnen und eine neue Authenticator-App hinzufügen.\n"
-    "2. Es erscheint ein QR-Code. Klick auf „Sie können den Barcode nicht "
-    "scannen?\" / „Unable to scan?\" — dort steht der lange Schlüssel "
-    "(Base32). Das ist dein Seed.\n"
-    "3. Entweder den Schlüssel hier ins Feld „TOTP-Seed\" eintragen, ODER "
-    "einen Screenshot/Foto des QR-Codes mit „QR-Code-Bild laden…\" "
-    "hochladen — die App liest den Seed automatisch aus.\n\n"
-    "Hinweis: Der Seed wird meist nur EINMAL angezeigt. Hast du ihn nicht "
-    "mehr, registriere eine neue Authenticator-App, um einen neuen QR-Code "
-    "/ Seed zu erhalten."
-)
-
-
 def _wrap(layout) -> QWidget:
     """Wrap a layout in a QWidget (for QFormLayout.addRow)."""
     w = QWidget()
@@ -99,10 +84,10 @@ def _wrap(layout) -> QWidget:
 
 
 _FIX_LABELS = {
-    "open_download": "Download-Seite öffnen",
-    "install_sso": "Jetzt installieren",
-    "create_config": "config.toml anlegen",
-    "open_setup": "Zum Setup",
+    "open_download": "fixbtn.open_download",
+    "install_sso": "fixbtn.install_sso",
+    "create_config": "fixbtn.create_config",
+    "open_setup": "fixbtn.open_setup",
 }
 
 
@@ -114,7 +99,7 @@ class PreflightDialog(QDialog):
         self._email, self._oc, self._sso = email, oc_path, sso_path
         self._on_setup = on_setup
         self._proc = None
-        self.setWindowTitle("Voraussetzungen")
+        self.setWindowTitle(t("preflight.title"))
         self.resize(720, 460)
         self._root = QVBoxLayout(self)
         self._rebuild()
@@ -131,9 +116,8 @@ class PreflightDialog(QDialog):
         checks = preflight.check_all(self._email or None, self._oc, self._sso)
         for c in checks:
             self._root.addWidget(self._row(c))
-        foot = QLabel("Alles bereit — du kannst dich verbinden."
-                      if preflight.all_ok(checks)
-                      else "Erledige die offenen Punkte — die Buttons helfen.")
+        foot = QLabel(t("preflight.all_ok") if preflight.all_ok(checks)
+                      else t("preflight.todo"))
         foot.setObjectName("subheader")
         self._root.addWidget(foot)
         self._root.addStretch(1)
@@ -142,18 +126,19 @@ class PreflightDialog(QDialog):
         frame = QFrame()
         v = QVBoxLayout(frame)
         v.setContentsMargins(0, 4, 0, 4)
-        head = QLabel(f"[{'OK' if c.ok else 'FEHLT'}]  {c.name}")
+        mark = t("preflight.ok") if c.ok else t("preflight.missing")
+        head = QLabel(f"[{mark}]  {t(c.name)}")
         head.setStyleSheet(
             "font-weight:600; color:%s;" % ("#3ba55d" if c.ok else "#e0a23c"))
         v.addWidget(head)
         if not c.ok:
             if c.fix:
-                fix = QLabel(c.fix)
+                fix = QLabel(t(c.fix))
                 fix.setWordWrap(True)
                 fix.setObjectName("subheader")
                 v.addWidget(fix)
             if c.action in _FIX_LABELS:
-                btn = QPushButton(_FIX_LABELS[c.action])
+                btn = QPushButton(t(_FIX_LABELS[c.action]))
                 btn.clicked.connect(lambda _, a=c.action, b=None: self._do(a))
                 v.addWidget(btn, alignment=Qt.AlignmentFlag.AlignLeft)
         return frame
@@ -164,10 +149,10 @@ class PreflightDialog(QDialog):
         elif action == "create_config":
             try:
                 p = preflight.create_config_toml()
-                QMessageBox.information(self, "Angelegt",
-                                        f"config.toml angelegt:\n{p}")
+                QMessageBox.information(self, t("config.created_title"),
+                                        f"{t('config.created_msg')}\n{p}")
             except OSError as exc:
-                QMessageBox.critical(self, "Fehler", str(exc))
+                QMessageBox.critical(self, t("generic.error"), str(exc))
             self._rebuild()
         elif action == "install_sso":
             self._install_sso()
@@ -183,13 +168,10 @@ class PreflightDialog(QDialog):
         self._proc = QProcess(self)
         self._proc.finished.connect(self._sso_done)
         self._clear()
-        self._root.addWidget(QLabel("openconnect-sso wird installiert … "
-                                    "(kann 1–2 Minuten dauern)"))
+        self._root.addWidget(QLabel(t("sso.installing")))
         self._proc.start(cmd[0], cmd[1:])
         if not self._proc.waitForStarted(5000):
-            QMessageBox.critical(self, "Fehler",
-                                 "uv nicht gefunden. Bitte uv installieren "
-                                 "oder openconnect-sso manuell einrichten.")
+            QMessageBox.critical(self, t("generic.error"), t("sso.no_uv"))
             self._proc = None
             self._rebuild()
 
@@ -197,9 +179,8 @@ class PreflightDialog(QDialog):
         ok = (code == 0)
         self._proc = None
         QMessageBox.information(
-            self, "Installation",
-            "openconnect-sso wurde installiert."
-            if ok else "Installation fehlgeschlagen (Exit %s)." % code)
+            self, t("sso.install_title"),
+            t("sso.install_ok") if ok else t("sso.install_fail") % code)
         self._rebuild()
 
 
@@ -223,25 +204,25 @@ class SetupView(QWidget):
         self.pw.setEchoMode(QLineEdit.EchoMode.Password)
         self.totp = QLineEdit()
         self.totp.setEchoMode(QLineEdit.EchoMode.Password)
-        self.stop_cisco = QCheckBox("Cisco Secure Client während Verbindung stoppen")
+        self.stop_cisco = QCheckBox(t("setup.stop_cisco"))
         self.stop_cisco.setChecked(existing.get("stop_cisco_during_run", True))
-        self.stop_mullvad = QCheckBox("Mullvad während Verbindung stoppen")
+        self.stop_mullvad = QCheckBox(t("setup.stop_mullvad"))
         self.stop_mullvad.setChecked(existing.get("stop_mullvad_during_run", True))
 
-        form.addRow("E-Mail", self.email)
-        form.addRow("Server", self.server)
+        form.addRow(t("setup.email"), self.email)
+        form.addRow(t("setup.server"), self.server)
         form.addRow("openconnect.exe", self.oc)
         form.addRow("openconnect-sso", self.sso)
-        self.pw.setPlaceholderText("nur ausfüllen, um es zu ändern")
-        self.totp.setPlaceholderText("base32-Seed — nur ausfüllen, um ihn zu ändern")
-        form.addRow("Passwort", self.pw)
-        form.addRow("TOTP-Seed", self.totp)
+        self.pw.setPlaceholderText(t("setup.pw_ph"))
+        self.totp.setPlaceholderText(t("setup.totp_ph"))
+        form.addRow(t("setup.password"), self.pw)
+        form.addRow(t("setup.totp"), self.totp)
 
         totp_help = QHBoxLayout()
-        qr_btn = QPushButton("QR-Code-Bild laden…")
+        qr_btn = QPushButton(t("setup.load_qr"))
         qr_btn.setObjectName("ghost")
         qr_btn.clicked.connect(self._load_qr)
-        help_btn = QPushButton("Wie bekomme ich den Seed?")
+        help_btn = QPushButton(t("setup.totp_help_btn"))
         help_btn.setObjectName("ghost")
         help_btn.clicked.connect(self._show_totp_help)
         totp_help.addWidget(qr_btn)
@@ -251,12 +232,12 @@ class SetupView(QWidget):
         form.addRow(self.stop_cisco)
         form.addRow(self.stop_mullvad)
 
-        check_btn = QPushButton("Voraussetzungen prüfen")
+        check_btn = QPushButton(t("btn.check_prereqs"))
         check_btn.setObjectName("ghost")
         check_btn.clicked.connect(self._check_prereqs)
         form.addRow(check_btn)
 
-        btn = QPushButton("Einrichten (einmaliger Admin-Dialog)")
+        btn = QPushButton(t("setup.submit"))
         btn.setObjectName("primary")
         btn.clicked.connect(self._submit)
         form.addRow(btn)
@@ -266,33 +247,27 @@ class SetupView(QWidget):
                               self.oc.text(), self.sso.text())
 
     def _show_totp_help(self):
-        QMessageBox.information(self, "TOTP-Seed finden", _TOTP_HELP_TEXT)
+        QMessageBox.information(self, t("totp.help_title"), t("totp.help_text"))
 
     def _load_qr(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "QR-Code-Bild wählen", "",
-            "Bilder (*.png *.jpg *.jpeg *.bmp *.gif *.webp)")
+            self, t("qr.pick_title"), "",
+            "Images (*.png *.jpg *.jpeg *.bmp *.gif *.webp)")
         if not path:
             return
         try:
             secret = qr.secret_from_qr_image(path)
         except qr.QRUnavailable as exc:
-            QMessageBox.warning(self, "QR-Erkennung nicht verfügbar", str(exc))
+            QMessageBox.warning(self, t("qr.unavailable_title"), str(exc))
             return
         except Exception as exc:
-            QMessageBox.critical(self, "Fehler beim Lesen", str(exc))
+            QMessageBox.critical(self, t("qr.read_error"), str(exc))
             return
         if secret:
             self.totp.setText(secret)
-            QMessageBox.information(
-                self, "Seed erkannt",
-                "TOTP-Seed aus dem QR-Code übernommen. Mit „Einrichten“ "
-                "speichern.")
+            QMessageBox.information(self, t("qr.found_title"), t("qr.found_msg"))
         else:
-            QMessageBox.warning(
-                self, "Kein Seed gefunden",
-                "Im Bild wurde kein TOTP-QR-Code erkannt. Achte auf ein "
-                "scharfes, vollständiges Bild des QR-Codes.")
+            QMessageBox.warning(self, t("qr.none_title"), t("qr.none_msg"))
 
     def _submit(self):
         fields = {
@@ -302,7 +277,8 @@ class SetupView(QWidget):
         }
         errors = gl.validate_setup_form(fields)
         if errors:
-            QMessageBox.warning(self, "Bitte korrigieren", "\n".join(errors))
+            QMessageBox.warning(self, t("setup.fix_errors"),
+                                "\n".join(t(e) for e in errors))
             return
 
         data = gl.build_auto_vpn_config(
@@ -316,7 +292,7 @@ class SetupView(QWidget):
         try:
             tw.register(sys.executable, str(path))
         except Exception as exc:  # VPNError or subprocess failure
-            QMessageBox.critical(self, "Setup fehlgeschlagen", str(exc))
+            QMessageBox.critical(self, t("setup.failed"), str(exc))
             return
 
         # Commit credentials only once the elevated task actually exists.
@@ -325,8 +301,7 @@ class SetupView(QWidget):
         if self.totp.text():
             set_uni_totp_secret(fields["email"], self.totp.text().replace(" ", ""))
 
-        QMessageBox.information(self, "Fertig",
-                                "Eingerichtet. Verbinden braucht jetzt keinen Admin-Dialog mehr.")
+        QMessageBox.information(self, t("setup.done_title"), t("setup.done_msg"))
         self._on_done()
 
 
@@ -344,7 +319,7 @@ class ControlView(QWidget):
 
         header = QLabel("automatic VPN")
         header.setObjectName("header")
-        sub = QLabel("Uni-Graz VPN — verbinden ohne Passwort & 2FA")
+        sub = QLabel(t("app.subtitle"))
         sub.setObjectName("subheader")
         root.addWidget(header)
         root.addWidget(sub)
@@ -362,14 +337,14 @@ class ControlView(QWidget):
         root.addLayout(row)
         root.addStretch(3)
 
-        self.connect_btn = QPushButton("Verbinden")
+        self.connect_btn = QPushButton(t("btn.connect"))
         self.connect_btn.setObjectName("primary")
-        self.disconnect_btn = QPushButton("Trennen")
-        self.log_btn = QPushButton("Log anzeigen")
+        self.disconnect_btn = QPushButton(t("btn.disconnect"))
+        self.log_btn = QPushButton(t("btn.show_log"))
         self.log_btn.setObjectName("ghost")
-        self.check_btn = QPushButton("Voraussetzungen prüfen")
+        self.check_btn = QPushButton(t("btn.check_prereqs"))
         self.check_btn.setObjectName("ghost")
-        self.settings_btn = QPushButton("Neu einrichten…")
+        self.settings_btn = QPushButton(t("btn.reconfigure"))
         self.settings_btn.setObjectName("ghost")
         self.connect_btn.clicked.connect(self._connect)
         self.disconnect_btn.clicked.connect(self._disconnect)
@@ -409,27 +384,27 @@ class ControlView(QWidget):
             self._connecting = 0
             self._failed = False
             self._set_dot(_DOT_GREEN)
-            self.status.setText("Verbunden")
+            self.status.setText(t("status.connected"))
         elif self._connecting > 0:
             self._connecting -= 1
             step = gl.connect_step_label(self._read_log())
-            if step == "Verbindung fehlgeschlagen":
+            if step == "step.failed":
                 self._connecting = 0
                 self._failed = True
                 self._set_dot(_DOT_RED)
-                self.status.setText("Verbindung fehlgeschlagen — „Log anzeigen“")
+                self.status.setText(t("status.failed_log"))
             elif self._connecting == 0:
                 self._failed = True
                 self._set_dot(_DOT_RED)
-                self.status.setText("Zeitüberschreitung — „Log anzeigen“")
+                self.status.setText(t("status.timeout_log"))
             else:
                 self._set_dot(_DOT_AMBER)
-                self.status.setText(step)
+                self.status.setText(t(step))
         elif self._failed:
             self._set_dot(_DOT_RED)
         else:
             self._set_dot(_DOT_GREY)
-            self.status.setText("Getrennt")
+            self.status.setText(t("status.disconnected"))
         # Heartbeat: while this GUI is alive and owns a (pending) connection,
         # keep the watchdog's timestamp fresh so it does NOT tear the tunnel
         # down. If the GUI crashes, these writes stop and the up-task tears
@@ -472,12 +447,12 @@ class ControlView(QWidget):
             self._connecting = _CONNECT_TIMEOUT_TICKS
             self._failed = False
             self._set_dot(_DOT_AMBER)
-            self.status.setText("Verbinde …")
+            self.status.setText(t("step.connecting"))
             self.connect_btn.setEnabled(False)
             self.disconnect_btn.setEnabled(True)
         except Exception as exc:
             self._connecting = 0
-            QMessageBox.critical(self, "Fehler", str(exc))
+            QMessageBox.critical(self, t("generic.error"), str(exc))
             self.refresh()
 
     def _disconnect(self):
@@ -488,7 +463,7 @@ class ControlView(QWidget):
             self._connecting = 0
             self._failed = False
         except Exception as exc:
-            QMessageBox.critical(self, "Fehler", str(exc))
+            QMessageBox.critical(self, t("generic.error"), str(exc))
         self.refresh()
 
     def _show_log(self):
@@ -497,9 +472,9 @@ class ControlView(QWidget):
             with open(path, encoding="utf-8", errors="replace") as f:
                 text = f.read()
         except OSError:
-            text = "Noch kein Verbindungs-Log vorhanden."
+            text = t("log.empty")
         dlg = QDialog(self)
-        dlg.setWindowTitle("Verbindungs-Log")
+        dlg.setWindowTitle(t("log.title"))
         dlg.resize(720, 480)
         v = QVBoxLayout(dlg)
         view = QPlainTextEdit()
@@ -514,8 +489,23 @@ class MainWindow(QWidget):
         super().__init__()
         self._icon = icon or QIcon()
         self.setWindowTitle("automatic VPN")
-        self.stack = QStackedWidget()
         outer = QVBoxLayout(self)
+
+        # language selector (top bar, right-aligned)
+        bar = QHBoxLayout()
+        bar.addStretch(1)
+        self.lang_label = QLabel(t("lang.label") + ":")
+        bar.addWidget(self.lang_label)
+        self.lang_combo = QComboBox()
+        for code, label in i18n.LANGUAGES.items():
+            self.lang_combo.addItem(label, code)
+        self.lang_combo.setCurrentIndex(
+            list(i18n.LANGUAGES).index(i18n.get_lang()))
+        self.lang_combo.currentIndexChanged.connect(self._on_lang_changed)
+        bar.addWidget(self.lang_combo)
+        outer.addLayout(bar)
+
+        self.stack = QStackedWidget()
         outer.addWidget(self.stack)
         self.setup = SetupView(on_done=self._show_control)
         self.control = ControlView(on_settings=self._show_setup)
@@ -540,12 +530,12 @@ class MainWindow(QWidget):
         self.tray = QSystemTrayIcon(self._icon, self)
         self.tray.setToolTip("automatic VPN")
         menu = QMenu()
-        self.act_open = menu.addAction("Öffnen")
+        self.act_open = menu.addAction(t("tray.open"))
         menu.addSeparator()
-        self.act_connect = menu.addAction("Verbinden")
-        self.act_disconnect = menu.addAction("Trennen")
+        self.act_connect = menu.addAction(t("btn.connect"))
+        self.act_disconnect = menu.addAction(t("btn.disconnect"))
         menu.addSeparator()
-        self.act_quit = menu.addAction("Beenden")
+        self.act_quit = menu.addAction(t("tray.quit"))
         self.tray.setContextMenu(menu)
         self.act_open.triggered.connect(self._show_window)
         self.act_connect.triggered.connect(lambda: self.control._connect())
@@ -573,9 +563,10 @@ class MainWindow(QWidget):
         ic = self._state_icons.get(name)
         if ic is not None and not ic.isNull():
             self.tray.setIcon(ic)
-        tip = {"connected": "Verbunden", "connecting": "Verbinde …",
-               "error": "Fehler — Log ansehen",
-               "disconnected": "Getrennt"}.get(state, "")
+        tip = {"connected": t("tray.tip_connected"),
+               "connecting": t("tray.tip_connecting"),
+               "error": t("tray.tip_error"),
+               "disconnected": t("tray.tip_disconnected")}.get(state, "")
         self.tray.setToolTip(f"automatic VPN — {tip}")
         if hasattr(self, "act_connect"):
             self.act_connect.setEnabled(state in ("disconnected", "error"))
@@ -591,6 +582,43 @@ class MainWindow(QWidget):
             if self.tray is not None:
                 self.tray.hide()
             QApplication.instance().quit()
+
+    # --- language -------------------------------------------------------
+
+    def _on_lang_changed(self, idx):
+        code = self.lang_combo.itemData(idx)
+        if not code or code == i18n.get_lang():
+            return
+        i18n.set_lang(code)
+        data = cfgmod.load_config()
+        data.setdefault("ui", {})["lang"] = code
+        try:
+            cfgmod.save_config(data)
+        except OSError:
+            pass
+        self._apply_language()
+
+    def _apply_language(self):
+        """Re-create the views and re-label the tray so the new language
+        takes effect immediately."""
+        on_setup_view = self.stack.currentWidget() is self.setup
+        self.stack.removeWidget(self.setup)
+        self.stack.removeWidget(self.control)
+        self.setup.deleteLater()
+        self.control.deleteLater()
+        self.setup = SetupView(on_done=self._show_control)
+        self.control = ControlView(on_settings=self._show_setup)
+        self.control.on_state = self._update_tray
+        self.stack.addWidget(self.setup)
+        self.stack.addWidget(self.control)
+        self.stack.setCurrentWidget(
+            self.setup if on_setup_view else self.control)
+        self.lang_label.setText(t("lang.label") + ":")
+        if self.tray is not None:
+            self.act_open.setText(t("tray.open"))
+            self.act_connect.setText(t("btn.connect"))
+            self.act_disconnect.setText(t("btn.disconnect"))
+            self.act_quit.setText(t("tray.quit"))
 
     def _route(self):
         view = gl.choose_view(cfgmod.load_config(), tw.is_registered())
@@ -626,8 +654,7 @@ class MainWindow(QWidget):
             event.ignore()
             self.hide()
             self.tray.showMessage(
-                "automatic VPN",
-                "Läuft im Hintergrund weiter — über das Tray-Icon steuern.",
+                "automatic VPN", t("tray.minimized"),
                 QSystemTrayIcon.MessageIcon.Information, 3000)
             return
         if self._perform_exit_teardown():
@@ -665,17 +692,16 @@ class MainWindow(QWidget):
         """Show the close prompt. Returns 'disconnect' | 'background' |
         'cancel'. Persists the choice if 'don't ask again' is ticked."""
         box = QMessageBox(self)
-        box.setWindowTitle("automatic VPN")
-        box.setText("Der VPN-Tunnel ist noch verbunden.")
-        box.setInformativeText("Möchtest du die Verbindung trennen oder im "
-                               "Hintergrund weiterlaufen lassen?")
-        disconnect_btn = box.addButton("Trennen",
+        box.setWindowTitle(t("close.title"))
+        box.setText(t("close.text"))
+        box.setInformativeText(t("close.info"))
+        disconnect_btn = box.addButton(t("close.disconnect"),
                                        QMessageBox.ButtonRole.AcceptRole)
-        background_btn = box.addButton("Im Hintergrund lassen",
+        background_btn = box.addButton(t("close.background"),
                                        QMessageBox.ButtonRole.ActionRole)
-        cancel_btn = box.addButton("Abbrechen",
+        cancel_btn = box.addButton(t("close.cancel"),
                                    QMessageBox.ButtonRole.RejectRole)
-        remember = QCheckBox("Diese Abfrage nicht mehr anzeigen")
+        remember = QCheckBox(t("close.dont_ask"))
         box.setCheckBox(remember)
         box.exec()
         clicked = box.clickedButton()
@@ -712,6 +738,8 @@ def _state_icon(name: str) -> QIcon:
 
 
 def main() -> int:
+    # Pick up the saved UI language (default English) before building widgets.
+    i18n.set_lang((cfgmod.load_config().get("ui") or {}).get("lang", "en"))
     app = QApplication(sys.argv)
     app.setStyleSheet(_STYLESHEET)
     # Keep the app alive when the window is closed — the tray icon controls
