@@ -290,6 +290,18 @@ class ControlView(QWidget):
         self.disconnect_btn.setEnabled(up or self._connecting > 0)
 
     def _connect(self):
+        # Proactive prerequisite check: rather than fire a doomed connect and
+        # show a cryptic failure, detect what's missing first and show the
+        # checklist with instructions.
+        av = (cfgmod.load_config().get("auto_vpn") or {})
+        checks = preflight.check_all(av.get("user_email") or None,
+                                     av.get("openconnect_path", ""),
+                                     av.get("openconnect_sso_path", ""))
+        if not preflight.all_ok(checks):
+            show_preflight_dialog(self, av.get("user_email", ""),
+                                  av.get("openconnect_path", ""),
+                                  av.get("openconnect_sso_path", ""))
+            return
         try:
             # Fresh heartbeat BEFORE the task starts so the watchdog sees an
             # owning GUI from the first moment.
