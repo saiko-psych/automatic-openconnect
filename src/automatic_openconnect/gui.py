@@ -24,9 +24,9 @@ from PyQt6.QtCore import Qt, QProcess, QTimer
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QColorDialog, QComboBox, QDialog, QFileDialog,
-    QFormLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMenu,
-    QMessageBox, QPlainTextEdit, QPushButton, QScrollArea, QStackedWidget,
-    QSystemTrayIcon, QVBoxLayout, QWidget,
+    QFormLayout, QFrame, QGridLayout, QHBoxLayout, QInputDialog, QLabel,
+    QLineEdit, QMenu, QMessageBox, QPlainTextEdit, QPushButton, QScrollArea,
+    QStackedWidget, QSystemTrayIcon, QVBoxLayout, QWidget,
 )
 
 from . import config as cfgmod
@@ -277,6 +277,10 @@ class PreflightDialog(QDialog):
         foot.setObjectName("subheader")
         self._root.addWidget(foot)
         self._root.addStretch(1)
+        close_btn = QPushButton(t("preflight.close"))
+        close_btn.setObjectName("primary")
+        close_btn.clicked.connect(self.accept)
+        self._root.addWidget(close_btn)
 
     def _row(self, c) -> QFrame:
         frame = QFrame()
@@ -297,10 +301,21 @@ class PreflightDialog(QDialog):
                 fix.setWordWrap(True)
                 fix.setObjectName("subheader")
                 v.addWidget(fix)
+            row = QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
             if c.action in _FIX_LABELS:
                 btn = QPushButton(t(_FIX_LABELS[c.action]))
                 btn.clicked.connect(lambda _, a=c.action, b=None: self._do(a))
-                v.addWidget(btn, alignment=Qt.AlignmentFlag.AlignLeft)
+                row.addWidget(btn)
+            # For openconnect.exe also offer a direct "Locate…" — covers any
+            # non-standard install location that auto-detection missed.
+            if c.name == "check.openconnect":
+                locate = QPushButton(t("preflight.locate"))
+                locate.setObjectName("ghost")
+                locate.clicked.connect(self._locate_openconnect)
+                row.addWidget(locate)
+            row.addStretch(1)
+            v.addLayout(row)
         return frame
 
     def _do(self, action: str):
@@ -321,6 +336,22 @@ class PreflightDialog(QDialog):
                 self._on_setup()
             self.accept()
 
+    def _locate_openconnect(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, t("preflight.locate"), "",
+            "openconnect.exe (openconnect.exe);;Programs (*.exe);;All files (*)")
+        if not path:
+            return
+        # Persist so setup and the backend use it, then re-check live.
+        self._oc = path
+        data = cfgmod.load_config()
+        data.setdefault("auto_vpn", {})["openconnect_path"] = path
+        try:
+            cfgmod.save_config(data)
+        except OSError:
+            pass
+        self._rebuild()
+
     def _install_sso(self):
         if self._proc is not None:
             return
@@ -335,6 +366,8 @@ class PreflightDialog(QDialog):
                 self._install_uv()
             return
         self._proc = QProcess(self)
+        self._proc.setProcessChannelMode(
+            QProcess.ProcessChannelMode.MergedChannels)
         self._proc.finished.connect(self._sso_done)
         self._clear()
         self._root.addWidget(QLabel(t("sso.installing")))
@@ -368,11 +401,25 @@ class PreflightDialog(QDialog):
             self._rebuild()
 
     def _sso_done(self, code, _status):
-        ok = (code == 0)
+        out = ""
+        if self._proc is not None:
+            try:
+                out = bytes(self._proc.readAllStandardOutput()).decode(
+                    "utf-8", "replace")
+            except Exception:
+                out = ""
         self._proc = None
-        QMessageBox.information(
-            self, t("sso.install_title"),
-            t("sso.install_ok") if ok else t("sso.install_fail") % code)
+        if code == 0:
+            QMessageBox.information(self, t("sso.install_title"),
+                                    t("sso.install_ok"))
+        else:
+            box = QMessageBox(self)
+            box.setWindowTitle(t("sso.install_title"))
+            box.setIcon(QMessageBox.Icon.Warning)
+            box.setText(t("sso.install_fail") % code)
+            if out.strip():
+                box.setDetailedText(out[-4000:])  # expandable "Details"
+            box.exec()
         self._rebuild()
 
 
@@ -458,10 +505,14 @@ class SetupView(QWidget):
         qr_btn = QPushButton(t("setup.load_qr"))
         qr_btn.setObjectName("ghost")
         qr_btn.clicked.connect(self._load_qr)
+        paste_btn = QPushButton(t("setup.paste_seed"))
+        paste_btn.setObjectName("ghost")
+        paste_btn.clicked.connect(self._paste_seed)
         help_btn = QPushButton(t("setup.totp_help_btn"))
         help_btn.setObjectName("ghost")
         help_btn.clicked.connect(self._show_totp_help)
         totp_help.addWidget(qr_btn)
+        totp_help.addWidget(paste_btn)
         totp_help.addWidget(help_btn)
         totp_help.addStretch(1)
         form.addRow("", _wrap(totp_help))
@@ -537,6 +588,22 @@ class SetupView(QWidget):
                                 t("qr.unavailable_msg"))
             return
         except Exception as exc:
+            QMessageBox.critical(self, t("qr.read_error"), str(exc))
+            return
+        if secret:
+            self.totp.setText(secret)
+            QMessageBox.information(self, t("qr.found_title"), t("qr.found_msg"))
+        else:
+            QMessageBox.warning(self, t("qr.none_title"), t("qr.none_msg"))
+
+    def _paste_seed(self):
+        text, ok = QInputDialog.getMultiLineText(
+            self, t("setup.paste_seed"), t("setup.paste_seed_prompt"), "")
+        if not ok or not text.strip():
+            return
+        try:
+            secret = qr.secret_from_text(text)
+        except Exception as exc:  # noqa: BLE001 - surface as a friendly error
             QMessageBox.critical(self, t("qr.read_error"), str(exc))
             return
         if secret:

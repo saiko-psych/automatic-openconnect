@@ -76,3 +76,41 @@ class TestMigration(unittest.TestCase):
         self.assertEqual(
             qr.extract_secret_from_otpauth("otpauth-migration://offline?data="),
             "")
+
+
+class TestSecretFromText(unittest.TestCase):
+    def test_otpauth_url(self):
+        uri = "otpauth://totp/Acme:alice?secret=JBSWY3DP&issuer=Acme"
+        self.assertEqual(qr.secret_from_text(uri), "JBSWY3DP")
+
+    def test_bare_base32(self):
+        self.assertEqual(qr.secret_from_text("jbswy3dp"), "JBSWY3DP")
+
+    def test_url_embedded_in_text(self):
+        blob = "my token: otpauth://totp/x?secret=JBSWY3DP end"
+        self.assertEqual(qr.secret_from_text(blob), "JBSWY3DP")
+
+    def test_freeotp_json_byte_array(self):
+        raw = b"Hello"
+        expected = base64.b32encode(raw).decode().rstrip("=")
+        js = '{"tokens":[{"type":"TOTP","secret":[72,101,108,108,111]}]}'
+        self.assertEqual(qr.secret_from_text(js), expected)
+
+    def test_freeotp_json_signed_bytes(self):
+        # Java signed bytes: 200 unsigned is -56 signed.
+        expected = base64.b32encode(bytes([200, 1, 255 & 0xFF])).decode().rstrip("=")
+        js = '{"tokens":[{"type":"TOTP","secret":[-56, 1, -1]}]}'
+        self.assertEqual(qr.secret_from_text(js), expected)
+
+    def test_json_prefers_totp_over_hotp(self):
+        totp = base64.b32encode(b"World").decode().rstrip("=")
+        js = ('{"tokens":[{"type":"HOTP","secret":[1,2,3]},'
+              '{"type":"TOTP","secret":[87,111,114,108,100]}]}')
+        self.assertEqual(qr.secret_from_text(js), totp)
+
+    def test_json_base32_string_secret(self):
+        js = '{"secret":"JBSWY3DP"}'
+        self.assertEqual(qr.secret_from_text(js), "JBSWY3DP")
+
+    def test_empty(self):
+        self.assertEqual(qr.secret_from_text("   "), "")

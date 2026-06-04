@@ -3,6 +3,25 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.3] - 2026-06-05
+
+More clean-machine tester fixes.
+
+### Added
+- **Paste URL / JSON** to import a TOTP seed (not just QR images): accepts an
+  `otpauth://` URI or an authenticator JSON export — incl. **FreeOTP+**, which
+  stores the secret as a byte array — so users without a QR export can still
+  get their seed in.
+- **“Locate openconnect.exe…”** button right in the prerequisites checklist
+  (persists the path), for installs auto-detection misses.
+- **Close** button in the prerequisites dialog (you can always get out now).
+- Failed `openconnect-sso` installs now show the **actual error output**
+  (expandable details) instead of just an exit code.
+
+### Fixed
+- `openconnect-sso` install failing on very new interpreters (e.g. Python
+  3.14): the install now pins a managed **Python 3.12**, which uv fetches.
+
 ## [0.1.2] - 2026-06-05
 
 Fixes from clean-machine tester feedback.

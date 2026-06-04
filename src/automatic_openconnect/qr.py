@@ -50,6 +50,79 @@ def _norm_base32(s: str) -> str:
     return (s or "").replace(" ", "").strip().upper().rstrip("=")
 
 
+def secret_from_text(text: str) -> str:
+    """Extract a base32 TOTP seed from pasted text. Accepts an
+    ``otpauth://``/``otpauth-migration://`` URI, a FreeOTP/authenticator JSON
+    export, an otpauth URI embedded in other text, or a bare base32 secret.
+    """
+    text = (text or "").strip()
+    if not text:
+        return ""
+    low = text.lower()
+    if low.startswith("otpauth://") or low.startswith("otpauth-migration://"):
+        return extract_secret_from_otpauth(text)
+    if text[0] in "[{":                      # looks like JSON (FreeOTP etc.)
+        seed = _secret_from_json(text)
+        if seed:
+            return seed
+    m = re.search(r"otpauth(?:-migration)?://[^\s\"']+", text, re.IGNORECASE)
+    if m:                                    # URI pasted inside other text
+        seed = extract_secret_from_otpauth(m.group(0))
+        if seed:
+            return seed
+    return extract_secret_from_otpauth(text)  # bare-base32 fallback
+
+
+def _secret_from_json(text: str) -> str:
+    """Pull a TOTP seed out of an authenticator JSON export. FreeOTP+ stores
+    the secret as a signed-byte array; others use a base32/base64 string."""
+    import json
+    try:
+        data = json.loads(text)
+    except (ValueError, TypeError):
+        return ""
+    tokens: list = []
+    if isinstance(data, dict):
+        if isinstance(data.get("tokens"), list):
+            tokens = data["tokens"]
+        elif "secret" in data:
+            tokens = [data]
+        else:                                # tokens keyed by name
+            tokens = [v for v in data.values() if isinstance(v, dict)]
+    elif isinstance(data, list):
+        tokens = data
+    # Prefer a TOTP token (or one with no explicit type) over HOTP.
+    def _is_totp(tok):
+        return str(tok.get("type", "")).upper() in ("", "TOTP")
+    ordered = ([t for t in tokens if isinstance(t, dict) and _is_totp(t)]
+               + [t for t in tokens if isinstance(t, dict) and not _is_totp(t)])
+    for tok in ordered:
+        seed = _json_secret_to_base32(tok.get("secret"))
+        if seed:
+            return seed
+    return ""
+
+
+def _json_secret_to_base32(secret) -> str:
+    if isinstance(secret, list) and secret:
+        try:
+            raw = bytes((int(x) & 0xFF) for x in secret)
+        except (ValueError, TypeError):
+            return ""
+        return base64.b32encode(raw).decode("ascii").rstrip("=")
+    if isinstance(secret, str):
+        b32 = _norm_base32(secret)
+        if b32 and all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567" for c in b32):
+            return b32
+        try:                                 # maybe base64-encoded raw bytes
+            raw = base64.b64decode(secret + "=" * (-len(secret) % 4))
+            if raw:
+                return base64.b32encode(raw).decode("ascii").rstrip("=")
+        except (ValueError, TypeError):
+            pass
+    return ""
+
+
 # --- Google Authenticator otpauth-migration parsing ---------------------
 # MigrationPayload { repeated OtpParameters otp_parameters = 1; ... }
 # OtpParameters { bytes secret = 1; string name = 2; string issuer = 3;

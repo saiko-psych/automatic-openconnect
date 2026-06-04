@@ -62,6 +62,14 @@ _STRINGS: dict[str, dict[str, str]] = {
         "de": "kommagetrennte Windows-Dienstnamen"},
     "setup.load_qr": {"en": "Load QR-code image…",
                       "de": "QR-Code-Bild laden…"},
+    "setup.paste_seed": {"en": "Paste URL / JSON…",
+                         "de": "URL / JSON einfügen…"},
+    "setup.paste_seed_prompt": {
+        "en": "Paste an otpauth:// URL or an authenticator JSON export "
+              "(e.g. FreeOTP) — the seed is extracted automatically:",
+        "de": "otpauth://-URL oder JSON-Export eines Authenticators "
+              "(z. B. FreeOTP) einfügen — der Seed wird automatisch "
+              "extrahiert:"},
     "setup.totp_help_btn": {"en": "How do I get the seed?",
                             "de": "Wie bekomme ich den Seed?"},
     "setup.totp_hotkey": {
@@ -199,6 +207,9 @@ _STRINGS: dict[str, dict[str, str]] = {
     "preflight.ok": {"en": "OK", "de": "OK"},
     "preflight.missing": {"en": "MISSING", "de": "FEHLT"},
     "preflight.warn": {"en": "CHECK", "de": "PRÜFEN"},
+    "preflight.close": {"en": "Close", "de": "Schließen"},
+    "preflight.locate": {"en": "Locate openconnect.exe…",
+                         "de": "openconnect.exe suchen…"},
     "fixbtn.open_download": {"en": "Open download page",
                              "de": "Download-Seite öffnen"},
     "fixbtn.install_sso": {"en": "Install now", "de": "Jetzt installieren"},

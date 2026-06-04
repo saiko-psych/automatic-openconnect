@@ -179,7 +179,10 @@ def install_sso_command() -> List[str]:
     uv = resolve_uv()
     if not uv:
         return []
-    return uv + ["tool", "install", "--with", "PyQt6",
+    # Pin a known-good managed Python: openconnect-sso 0.8.1 + its deps don't
+    # have wheels for bleeding-edge interpreters (e.g. 3.14), which makes the
+    # install fail. uv downloads 3.12 if needed.
+    return uv + ["tool", "install", "--python", "3.12", "--with", "PyQt6",
                  "--with", "setuptools<70", "openconnect-sso"]
 
 
