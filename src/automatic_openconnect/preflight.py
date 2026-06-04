@@ -6,10 +6,12 @@ result, the logic stays unit-testable.
 
 Checked prerequisites:
   1. openconnect.exe   — the VPN engine (builds the tunnel / Wintun adapter)
-  2. openconnect-sso   — performs the Keycloak/SAML login
-  3. config.toml       — openconnect-sso's auto-fill selectors (the bundled
+  2. Wintun driver     — wintun.dll next to openconnect (ships with
+                         OpenConnect-GUI); a warning only, never blocking
+  3. openconnect-sso   — performs the Keycloak/SAML login
+  4. config.toml       — openconnect-sso's auto-fill selectors (the bundled
                          template defaults to Uni Graz; see CONFIG_TOML_TEMPLATE)
-  4. credentials       — login password + TOTP seed in the OS keyring
+  5. credentials       — login password + TOTP seed in the OS keyring
 """
 
 from __future__ import annotations
@@ -37,6 +39,8 @@ class Check:
     action: str = ""  # machine key the GUI maps to a fix button:
     #                   "open_download" | "install_sso" | "create_config"
     #                   | "open_setup"  (empty = no automated action)
+    warn_only: bool = False  # advisory only — does NOT block (see all_ok);
+    #                          used for heuristic checks like Wintun.
 
 
 def check_openconnect(path: str = "") -> Check:
@@ -50,6 +54,38 @@ def check_openconnect(path: str = "") -> Check:
     return Check("check.openconnect", ok,
                  "" if ok else "fix.openconnect",
                  "" if ok else "open_download")
+
+
+def _wintun_present(openconnect_path: str = "") -> bool:
+    """Heuristic: is wintun.dll where openconnect can load it? OpenConnect-GUI
+    ships it next to openconnect.exe; it may also live in System32/SysWOW64."""
+    p = (openconnect_path or "").strip()
+    oc_dir = os.path.dirname(p) if (p and os.path.exists(p)) else ""
+    if not oc_dir:
+        d = detect_openconnect()
+        oc_dir = os.path.dirname(d) if d else ""
+    sysroot = os.environ.get("SystemRoot", r"C:\Windows")
+    candidates = [
+        os.path.join(oc_dir, "wintun.dll") if oc_dir else "",
+        os.path.join(sysroot, "System32", "wintun.dll"),
+        os.path.join(sysroot, "SysWOW64", "wintun.dll"),
+    ]
+    return any(c and os.path.exists(c) for c in candidates)
+
+
+def check_wintun(openconnect_path: str = "") -> Check:
+    """Warn (never block) if the Wintun driver is missing. Only meaningful
+    once openconnect itself is found — otherwise the openconnect check
+    already tells the user to install OpenConnect-GUI (which bundles Wintun)."""
+    oc = (openconnect_path or "").strip()
+    oc_found = (bool(oc) and os.path.exists(oc)) or bool(detect_openconnect())
+    if not oc_found:
+        return Check("check.wintun", True, warn_only=True)
+    ok = _wintun_present(openconnect_path)
+    return Check("check.wintun", ok,
+                 "" if ok else "fix.wintun",
+                 "" if ok else "open_download",
+                 warn_only=True)
 
 
 def check_openconnect_sso(path: str = "") -> Check:
@@ -147,6 +183,7 @@ def check_all(email: Optional[str] = None,
               openconnect_sso_path: str = "") -> List[Check]:
     return [
         check_openconnect(openconnect_path),
+        check_wintun(openconnect_path),
         check_openconnect_sso(openconnect_sso_path),
         check_config_toml(),
         check_credentials(email),
@@ -154,4 +191,6 @@ def check_all(email: Optional[str] = None,
 
 
 def all_ok(checks: List[Check]) -> bool:
-    return all(c.ok for c in checks)
+    """True if every *blocking* check passed. Advisory (warn_only) checks
+    never block a connection attempt."""
+    return all(c.ok for c in checks if not c.warn_only)

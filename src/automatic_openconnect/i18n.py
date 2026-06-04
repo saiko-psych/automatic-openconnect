@@ -148,6 +148,8 @@ _STRINGS: dict[str, dict[str, str]] = {
     # prerequisites checklist
     "check.openconnect": {"en": "openconnect.exe — VPN engine",
                           "de": "openconnect.exe — VPN-Engine"},
+    "check.wintun": {"en": "Wintun driver — tunnel adapter",
+                     "de": "Wintun-Treiber — Tunnel-Adapter"},
     "check.sso": {"en": "openconnect-sso — login",
                   "de": "openconnect-sso — Login"},
     "check.config": {"en": "config.toml — login fields",
@@ -159,6 +161,13 @@ _STRINGS: dict[str, dict[str, str]] = {
               "driver), then enter the path in setup.",
         "de": "openconnect-gui installieren (enthält openconnect.exe + "
               "Wintun-Treiber), dann den Pfad im Setup eintragen."},
+    "fix.wintun": {
+        "en": "wintun.dll wasn't found next to openconnect. It ships with "
+              "OpenConnect-GUI — reinstalling it usually fixes this. Only "
+              "blocks the tunnel if it's genuinely missing.",
+        "de": "wintun.dll wurde nicht neben openconnect gefunden. Sie kommt "
+              "mit OpenConnect-GUI — eine Neuinstallation behebt das meist. "
+              "Blockiert nur, wenn sie wirklich fehlt."},
     "fix.sso": {"en": "Can be installed automatically via uv.",
                 "de": "Kann automatisch per uv installiert werden."},
     "fix.config": {"en": "The login-field template (config.toml) can be "
@@ -180,6 +189,7 @@ _STRINGS: dict[str, dict[str, str]] = {
                        "de": "Erledige die offenen Punkte — die Buttons helfen."},
     "preflight.ok": {"en": "OK", "de": "OK"},
     "preflight.missing": {"en": "MISSING", "de": "FEHLT"},
+    "preflight.warn": {"en": "CHECK", "de": "PRÜFEN"},
     "fixbtn.open_download": {"en": "Open download page",
                              "de": "Download-Seite öffnen"},
     "fixbtn.install_sso": {"en": "Install now", "de": "Jetzt installieren"},

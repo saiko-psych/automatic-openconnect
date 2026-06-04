@@ -95,8 +95,47 @@ class TestAutoFixes(unittest.TestCase):
         self.assertIn("openconnect-sso", cmd)
 
 
+class TestWintun(unittest.TestCase):
+    def test_warns_when_oc_found_but_dll_missing(self):
+        # openconnect resolves, but no wintun.dll anywhere → warn (not block).
+        with mock.patch("automatic_openconnect.preflight.os.path.exists",
+                        side_effect=lambda p: p.endswith("openconnect.exe")):
+            c = preflight.check_wintun(r"C:\oc\openconnect.exe")
+        self.assertFalse(c.ok)
+        self.assertTrue(c.warn_only)
+        self.assertEqual(c.fix, "fix.wintun")
+
+    def test_ok_when_dll_next_to_openconnect(self):
+        with mock.patch("automatic_openconnect.preflight.os.path.exists",
+                        return_value=True):
+            c = preflight.check_wintun(r"C:\oc\openconnect.exe")
+        self.assertTrue(c.ok)
+        self.assertTrue(c.warn_only)
+
+    def test_silent_when_openconnect_not_found(self):
+        with mock.patch("automatic_openconnect.preflight.os.path.exists",
+                        return_value=False), \
+             mock.patch("automatic_openconnect.preflight.detect_openconnect",
+                        return_value=""):
+            c = preflight.check_wintun("")
+        self.assertTrue(c.ok)        # don't double-warn; oc check handles it
+        self.assertTrue(c.warn_only)
+
+
+class TestAllOkIgnoresWarnings(unittest.TestCase):
+    def test_warn_only_failure_does_not_block(self):
+        checks = [preflight.Check("a", True),
+                  preflight.Check("check.wintun", False, warn_only=True)]
+        self.assertTrue(preflight.all_ok(checks))
+
+    def test_blocking_failure_blocks(self):
+        checks = [preflight.Check("a", False),
+                  preflight.Check("check.wintun", True, warn_only=True)]
+        self.assertFalse(preflight.all_ok(checks))
+
+
 class TestCheckAll(unittest.TestCase):
-    def test_returns_four_checks_and_all_ok_helper(self):
+    def test_returns_all_checks_and_all_ok_helper(self):
         with mock.patch("automatic_openconnect.preflight.os.path.exists",
                         return_value=True), \
              mock.patch("automatic_openconnect.secrets.get_uni_login_password",
@@ -107,5 +146,5 @@ class TestCheckAll(unittest.TestCase):
                 email="x@uni-graz.at",
                 openconnect_path=r"C:\oc\openconnect.exe",
                 openconnect_sso_path=r"C:\oc\openconnect-sso.exe")
-        self.assertEqual(len(checks), 4)
+        self.assertEqual(len(checks), 5)
         self.assertTrue(preflight.all_ok(checks))

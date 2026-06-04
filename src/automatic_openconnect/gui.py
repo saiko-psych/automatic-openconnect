@@ -282,10 +282,14 @@ class PreflightDialog(QDialog):
         frame = QFrame()
         v = QVBoxLayout(frame)
         v.setContentsMargins(0, 4, 0, 4)
-        mark = t("preflight.ok") if c.ok else t("preflight.missing")
+        if c.ok:
+            mark, color = t("preflight.ok"), "#3ba55d"
+        elif c.warn_only:
+            mark, color = t("preflight.warn"), "#e0a23c"
+        else:
+            mark, color = t("preflight.missing"), "#e04f4f"
         head = QLabel(f"[{mark}]  {t(c.name)}")
-        head.setStyleSheet(
-            "font-weight:600; color:%s;" % ("#3ba55d" if c.ok else "#e0a23c"))
+        head.setStyleSheet(f"font-weight:600; color:{color};")
         v.addWidget(head)
         if not c.ok:
             if c.fix:
