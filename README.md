@@ -39,31 +39,53 @@ what it was built and tested for.
 
 ## Status
 
-Early. **Phase 1** (code extraction from the Termino project) is done:
-the Linux and Windows backends, the keyring helper, and their test suites
-are in place. macOS port, setup wizards, the Ctrl+Alt+P TOTP hotkey
-daemon, and the Read the Docs site come in later phases.
+**0.1.0** ships a **Windows desktop app** (`automatic-vpn`): one-click
+connect/disconnect, a system-tray icon, guided first-time setup, and an
+English/German UI. The cross-platform library (below) is also available.
+macOS port and a standalone `.exe` are later milestones.
 
-## Install
+## Desktop app (Windows)
 
-No PyPI release yet — install straight from git:
+A small windowed app with a tray icon: connect/disconnect with one click,
+no UAC prompt after a one-time setup, no console windows.
+
+**Install** (no PyPI release yet — straight from git):
 
 ```
 uv tool install --with PyQt6 --with "setuptools<70" \
+    --with opencv-python-headless \
     --from git+https://github.com/saiko-psych/automatic-openconnect \
     automatic-openconnect
 ```
 
-`openconnect-sso` itself is installed separately (it is not bundled). The
-two `--with` pins are required by openconnect-sso 0.8.1:
-`setuptools<70` because it still imports `pkg_resources`, and `PyQt6` for
-its headless browser auth step.
+`opencv-python-headless` is optional — only needed to read a TOTP seed from
+a QR-code image; everything else works without it.
 
-You also need the `openconnect` CLI on PATH:
+**Run:** `automatic-vpn` (windowed) or `automatic-vpn-console` (shows a
+console for tracebacks).
 
-- Linux: `apt install openconnect` (or your distro's package)
-- Windows: the `openconnect-gui` bundle (ships `openconnect.exe`)
-- macOS: `brew install openconnect`
+**First launch** walks you through the prerequisites with one-click fixes
+(create `config.toml`, install `openconnect-sso`, open the openconnect-gui
+download page), then collects your login email, password and TOTP seed
+(stored in the Windows Credential Manager — you can also import the seed
+from a QR-code image). "Set up" registers a Scheduled Task once (a single
+UAC prompt); after that, **Connect** needs no elevation.
+
+The Uni-Graz VPN is the built-in default (server + login-field template);
+point `server` at another Cisco AnyConnect gateway to use the app elsewhere.
+
+### Prerequisites (both app and library)
+
+`openconnect-sso` and the `openconnect` CLI are **not** bundled:
+
+- `openconnect-sso` — `uv tool install --with PyQt6 --with "setuptools<70" openconnect-sso`
+  (the app's checklist can do this for you). The two `--with` pins are
+  required by openconnect-sso 0.8.1: `setuptools<70` (still imports
+  `pkg_resources`) and `PyQt6` (its browser auth step).
+- the `openconnect` CLI on PATH:
+  - Linux: `apt install openconnect` (or your distro's package)
+  - Windows: the `openconnect-gui` bundle (ships `openconnect.exe` + Wintun)
+  - macOS: `brew install openconnect`
 
 ## Usage (library)
 
