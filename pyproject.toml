@@ -1,11 +1,10 @@
 # ===========================================================================
 # pyproject.toml - automatic-openconnect
 # ===========================================================================
-# Install (git-only for now, no PyPI):
+# Install (git-only for now, no PyPI) — ONE line (PowerShell rejects the bash
+# "\" line-continuations):
 #
-#   uv tool install --with PyQt6 --with "setuptools<70" \
-#       --from git+https://github.com/saiko-psych/automatic-openconnect \
-#       automatic-openconnect
+#   uv tool install --with PyQt6 --with "setuptools<70" --with opencv-python-headless --from git+https://github.com/saiko-psych/automatic-openconnect automatic-openconnect
 #
 # The two --with pins are inherited from the openconnect-sso dependency,
 # which is installed separately (it is NOT bundled here).
@@ -17,7 +16,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "automatic-openconnect"
-version = "0.1.1"
+version = "0.1.2"
 description = "Cross-platform headless openconnect-sso automation: bring a Cisco AnyConnect compatible VPN up around your code, with login PW + TOTP seed from the OS keyring. Community tool, not supported by uniIT."
 readme = "README.md"
 license = { text = "MIT" }

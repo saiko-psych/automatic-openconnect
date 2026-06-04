@@ -49,13 +49,12 @@ keyring, never in config or logs. Built as a thin automation layer on top of
 and run it. The build is unsigned, so SmartScreen shows *“Windows protected
 your PC”* → **More info → Run anyway**.
 
-**Or install with [uv]** (gets updates via `uv tool upgrade`):
+**Or install with [uv]** (gets updates via `uv tool upgrade`). Run this as
+**one line** — PowerShell does not accept the `\` line-continuations you may
+know from bash:
 
-```sh
-uv tool install --with PyQt6 --with "setuptools<70" \
-    --with opencv-python-headless \
-    --from git+https://github.com/saiko-psych/automatic-openconnect \
-    automatic-openconnect
+```powershell
+uv tool install --with PyQt6 --with "setuptools<70" --with opencv-python-headless --from git+https://github.com/saiko-psych/automatic-openconnect automatic-openconnect
 ```
 
 Then run `automatic-vpn` (windowed) or `automatic-vpn-console` (keeps a

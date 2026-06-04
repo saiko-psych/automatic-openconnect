@@ -3,6 +3,29 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.2] - 2026-06-05
+
+Fixes from clean-machine tester feedback.
+
+### Fixed
+- **`uv` not found** even after `pip install uv`: `uv` is now located on
+  PATH, in `~/.local/bin` (official installer), and in a Python's Scripts dir
+  (pip install) — wherever it actually landed.
+- **openconnect.exe shown as missing** although installed: detection now also
+  checks `Program Files (x86)` and `LOCALAPPDATA\Programs`; `openconnect-sso`
+  is also found in `~/.local/bin` (where `uv tool` installs it, often off PATH).
+- README/pyproject install command no longer uses bash `\` line-continuations
+  (PowerShell rejected them) — it's a single line now.
+
+### Added
+- If `uv` is missing, the "Install now" button offers to **install uv
+  automatically** (official installer, no admin / no Python), then continues
+  with openconnect-sso.
+- **Browse…** buttons in setup for the openconnect / openconnect-sso paths,
+  so any install location works.
+- Clearer prerequisite wording (OpenConnect-GUI only needs installing, not
+  launching; how `openconnect-sso` / `uv` are handled).
+
 ## [0.1.1] - 2026-06-04
 
 ### Added
