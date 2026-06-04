@@ -293,7 +293,8 @@ class SetupView(QWidget):
         path = cfgmod.save_config(data)
 
         try:
-            tw.register(sys.executable, str(path))
+            tw.register(sys.executable, str(path),
+                        frozen=getattr(sys, "frozen", False))
         except Exception as exc:  # VPNError or subprocess failure
             QMessageBox.critical(self, t("setup.failed"), str(exc))
             return
@@ -743,6 +744,18 @@ def _state_icon(name: str) -> QIcon:
         return QIcon()
 
 
+def run() -> int:
+    """Dual-mode entry for the frozen .exe (and `python -m`): if the first
+    argument is a backend subcommand (up/down/status) run the CLI backend;
+    otherwise launch the GUI. This lets one executable serve both the
+    double-clickable app AND the elevated Scheduled Task (`automatic-vpn.exe
+    up --config ...`)."""
+    if sys.argv[1:2] and sys.argv[1] in ("up", "down", "status"):
+        from ._windows import main_cli
+        return main_cli()
+    return main()
+
+
 def main() -> int:
     # Pick up the saved UI language (default English) before building widgets.
     i18n.set_lang((cfgmod.load_config().get("ui") or {}).get("lang", "en"))
@@ -762,4 +775,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run())

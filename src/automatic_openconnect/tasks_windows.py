@@ -29,33 +29,42 @@ TASK_DOWN = "AutoOpenconnect-Down"
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
-def build_register_script(python_exe: str, config_path: str) -> str:
+def build_register_script(python_exe: str, config_path: str,
+                          frozen: bool = False) -> str:
     """Return the PowerShell that registers both tasks (runs elevated).
 
-    Each task runs ``python.exe`` DIRECTLY — there is deliberately NO
+    Each task runs the executable DIRECTLY — there is deliberately NO
     ``cmd.exe`` wrapper. The previous ``cmd /c "... & pause"`` form was
     doubly broken: nested cmd quote-stripping mangled the ``--config``
-    path, and ``& pause`` masked python's real exit code (cmd reported
-    pause's success, hiding a failed ``up``). Running python directly —
-    exactly what a working manual elevated invocation does — avoids both.
-    Task Scheduler passes ``-Argument`` straight to the executable, so the
-    quoted config path survives into ``sys.argv``. RunLevel Highest is
-    required for the Wintun adapter.
+    path, and ``& pause`` masked python's real exit code. Task Scheduler
+    passes ``-Argument`` straight to the executable, so the quoted config
+    path survives into ``sys.argv``. RunLevel Highest is required for Wintun.
+
+    Two modes:
+    - ``frozen=True`` (PyInstaller .exe): run the app exe itself with the
+      ``up``/``down`` subcommand — ``<app.exe> up --config "<cfg>"``.
+    - ``frozen=False`` (dev / uv install): run the windowless interpreter
+      with the module — ``pythonw.exe -m automatic_openconnect._windows up
+      --config "<cfg>"``. python.exe is swapped for its GUI-subsystem twin
+      pythonw.exe so no console window pops up.
     """
-    # Use the windowless interpreter (pythonw.exe) so the task does not pop
-    # a console window. python.exe is a console-subsystem app; pythonw.exe
-    # is the GUI-subsystem twin that ships beside it.
-    exe = python_exe
-    if exe.lower().endswith("python.exe"):
-        exe = exe[: -len("python.exe")] + "pythonw.exe"
+    if frozen:
+        exe = python_exe
+    else:
+        exe = python_exe
+        if exe.lower().endswith("python.exe"):
+            exe = exe[: -len("python.exe")] + "pythonw.exe"
 
     def task_block(name: str, sub: str) -> str:
         # Registered through a PowerShell SINGLE-quoted -Argument, so the
         # double quotes around the path are stored literally (PowerShell
         # does not process them inside '...'); Windows then hands them to
-        # python's argv parser.
-        argline = (f'-m automatic_openconnect._windows {sub} '
-                   f'--config "{config_path}"')
+        # the executable's argv parser.
+        if frozen:
+            argline = f'{sub} --config "{config_path}"'
+        else:
+            argline = (f'-m automatic_openconnect._windows {sub} '
+                       f'--config "{config_path}"')
         return (
             f"$a = New-ScheduledTaskAction -Execute '{exe}' "
             f"-Argument '{argline}';\n"
@@ -89,9 +98,9 @@ def build_elevated_launch(inner_script: str) -> List[str]:
     return ["powershell", "-NoProfile", "-Command", outer]
 
 
-def register(python_exe: str, config_path: str) -> None:
+def register(python_exe: str, config_path: str, frozen: bool = False) -> None:
     """Register both tasks elevated. One UAC prompt. Raises on failure."""
-    script = build_register_script(python_exe, config_path)
+    script = build_register_script(python_exe, config_path, frozen)
     argv = build_elevated_launch(script)
     result = subprocess.run(argv, creationflags=_NO_WINDOW,
                             stdin=subprocess.DEVNULL,
