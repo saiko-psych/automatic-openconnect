@@ -1,93 +1,99 @@
 # automatic-openconnect
 
-**Connect to the University of Graz VPN (`univpn.uni-graz.at`) automatically,
-without typing your password or 2FA code every time.**
+**Bring up a Cisco AnyConnect–compatible VPN automatically — without typing
+your password or 2FA code every time.**
 
-This tool brings the Uni Graz VPN tunnel up around a block of your code and
-tears it down again afterwards, pulling your login password and (optionally)
-your TOTP 2-factor code from the OS keyring. It was built for — and is
-live-verified against — the Uni Graz VPN. It is headless and cross-platform
-(Linux, Windows, macOS planned).
+A small **Windows desktop app** (one‑click connect/disconnect from the system
+tray) plus a **headless Python library** for wrapping a block of code in a VPN
+session. Your login password and optional TOTP 2‑factor seed live in the OS
+keyring, never in config or logs. Built as a thin automation layer on top of
+[openconnect-sso], which speaks the Cisco AnyConnect protocol.
 
-It is a thin automation layer on top of [openconnect-sso], which speaks the
-Cisco AnyConnect protocol.
+[![tests](https://github.com/saiko-psych/automatic-openconnect/actions/workflows/tests.yml/badge.svg)](https://github.com/saiko-psych/automatic-openconnect/actions/workflows/tests.yml)
+&nbsp;[![release](https://img.shields.io/github/v/release/saiko-psych/automatic-openconnect)](https://github.com/saiko-psych/automatic-openconnect/releases/latest)
+&nbsp;[![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-### Works with other VPNs too
+> Works with **any** Cisco AnyConnect–compatible gateway that `openconnect-sso`
+> can reach. It was originally built for and is live‑tested against the
+> University of Graz VPN, so that gateway ships as the built‑in default — but
+> nothing is hard‑wired to it. Point `server` at your own gateway and you're
+> set ([see below](#using-a-different-vpn)).
 
-Nothing here is hard-wired to Uni Graz. Any Cisco AnyConnect–compatible VPN
-that `openconnect-sso` can reach works the same way — just point `server` at
-your own gateway and use your own login email (see [Usage](#usage-library)).
-The Uni Graz defaults and the notes below are simply there because that is
-what it was built and tested for.
+## Highlights
 
-> ## ⚠️ For University of Graz members: use at your own risk — not supported by uniIT
->
-> The note in this box applies specifically to **members of the University of
-> Graz** using this tool against the official Uni Graz VPN. (If you point it
-> at a different organisation's VPN, follow that organisation's own policy
-> instead.)
->
-> This is a **community tool**, hosted on a personal account. It is **not** an
-> institutional product and is **not supported by uniIT** (the Uni Graz IT
-> department) or any other IT department. At Uni Graz, OpenConnect may be used
-> "auf eigenes Risiko und eigene Verantwortung" per the university policy
-> ([Mitteilungsblatt 2007-08/31.a](https://mitteilungsblatt.uni-graz.at/de/2007-08/31.a/pdf/)).
-> Storing your TOTP seed in a keyring is your decision and your
-> responsibility. If you enable it, keep disk encryption on (BitLocker /
-> FileVault / LUKS) and a strong login password. The TOTP feature is
-> **opt-in**.
+- **One click, no prompts.** Connect/disconnect from a tray icon. A one‑time
+  setup registers an elevated task (a single UAC prompt); connecting
+  afterwards needs no elevation and pops no console windows.
+- **No password / 2FA typing.** Credentials come from the OS keyring. The
+  TOTP feature is opt‑in.
+- **Global TOTP hotkey** (`Ctrl+Alt+P`): types the current 6‑digit code into
+  whatever field has focus — handy for any 2FA prompt, not just the VPN.
+- **Guided setup** with a live prerequisites check and one‑click fixes
+  (create the login‑field template, install `openconnect-sso`, open the
+  OpenConnect‑GUI download).
+- **Customisable UI:** light/dark theme, accent colour, per‑state status
+  colours, autostart at login, start‑minimised, tray notifications.
+- **Crash‑safe:** a watchdog tears the tunnel down if the app dies; closing
+  while connected asks whether to disconnect or keep it up in the background.
+- **English / German**, switchable at runtime.
+- **QR seed import** from an authenticator screenshot (incl. Google
+  Authenticator export QR codes).
+- **Headless library** for CI/servers, with the same keyring‑backed login.
 
-## Status
+## Install
 
-**0.1.0** ships a **Windows desktop app** (`automatic-vpn`): one-click
-connect/disconnect, a system-tray icon, guided first-time setup, and an
-English/German UI. The cross-platform library (below) is also available.
-macOS port and a standalone `.exe` are later milestones.
+### Desktop app (Windows)
 
-## Desktop app (Windows)
+**Easiest — download the executable:** grab `automatic-vpn.exe` from the
+[latest release](https://github.com/saiko-psych/automatic-openconnect/releases/latest)
+and run it. The build is unsigned, so SmartScreen shows *“Windows protected
+your PC”* → **More info → Run anyway**.
 
-A small windowed app with a tray icon: connect/disconnect with one click,
-no UAC prompt after a one-time setup, no console windows.
+**Or install with [uv]** (gets updates via `uv tool upgrade`):
 
-**Install** (no PyPI release yet — straight from git):
-
-```
+```sh
 uv tool install --with PyQt6 --with "setuptools<70" \
     --with opencv-python-headless \
     --from git+https://github.com/saiko-psych/automatic-openconnect \
     automatic-openconnect
 ```
 
-`opencv-python-headless` is optional — only needed to read a TOTP seed from
-a QR-code image; everything else works without it.
+Then run `automatic-vpn` (windowed) or `automatic-vpn-console` (keeps a
+console open for tracebacks). `opencv-python-headless` is optional — it is
+only needed to read a TOTP seed from a QR‑code image.
 
-**Run:** `automatic-vpn` (windowed) or `automatic-vpn-console` (shows a
-console for tracebacks).
+### Prerequisites
 
-**First launch** walks you through the prerequisites with one-click fixes
-(create `config.toml`, install `openconnect-sso`, open the openconnect-gui
-download page), then collects your login email, password and TOTP seed
-(stored in the Windows Credential Manager — you can also import the seed
-from a QR-code image). "Set up" registers a Scheduled Task once (a single
-UAC prompt); after that, **Connect** needs no elevation.
+`openconnect-sso` and the `openconnect` engine are **not** bundled. The app's
+first‑run checklist can install/locate them for you, or set them up manually:
 
-The Uni-Graz VPN is the built-in default (server + login-field template);
-point `server` at another Cisco AnyConnect gateway to use the app elsewhere.
+| Component | Install |
+| --- | --- |
+| **openconnect-sso** (SAML/Keycloak login) | `uv tool install --with PyQt6 --with "setuptools<70" openconnect-sso` |
+| **openconnect engine** | **Windows:** [OpenConnect‑GUI] (ships `openconnect.exe` **and** the Wintun driver) · **Linux:** `apt install openconnect` · **macOS:** `brew install openconnect` |
 
-### Prerequisites (both app and library)
+> The two `--with` pins are required by openconnect-sso 0.8.1: `setuptools<70`
+> (it still imports `pkg_resources`) and `PyQt6` (its browser auth step).
 
-`openconnect-sso` and the `openconnect` CLI are **not** bundled:
+## Desktop app — first run
 
-- `openconnect-sso` — `uv tool install --with PyQt6 --with "setuptools<70" openconnect-sso`
-  (the app's checklist can do this for you). The two `--with` pins are
-  required by openconnect-sso 0.8.1: `setuptools<70` (still imports
-  `pkg_resources`) and `PyQt6` (its browser auth step).
-- the `openconnect` CLI on PATH:
-  - Linux: `apt install openconnect` (or your distro's package)
-  - Windows: the `openconnect-gui` bundle (ships `openconnect.exe` + Wintun)
-  - macOS: `brew install openconnect`
+The app walks you through the prerequisites, then collects your login email,
+password and TOTP seed (stored in the Windows Credential Manager — you can
+also import the seed from a QR‑code image). **Set up** registers a Scheduled
+Task once (the single UAC prompt); after that, **Connect** needs no elevation.
 
-## Usage (library)
+App settings (theme, accent, status colours, autostart, notifications, the
+TOTP hotkey toggle and legal/about info) live under the **Settings** button.
+
+## Using a different VPN
+
+Nothing is tied to any one organisation. In the desktop app, open
+**Configuration** and set the **Server** to your own gateway and the **Email**
+to your login. In the library, set `server` / `user_email` in the config (see
+below). The bundled defaults simply reflect what the tool was built and tested
+against.
+
+## Library usage
 
 ```python
 from automatic_openconnect import auto_vpn_session, VPNError
@@ -95,35 +101,56 @@ from automatic_openconnect import auto_vpn_session, VPNError
 config_data = {
     "auto_vpn": {
         "enabled": True,
-        "user_email": "you@example.uni-graz.at",  # your login email
-        "server": "univpn.uni-graz.at",            # Uni Graz default; swap for another gateway
+        "user_email": "you@example.org",   # your login email
+        "server": "vpn.example.org",        # your Cisco AnyConnect gateway
     }
 }
 
 try:
     with auto_vpn_session(config_data):
-        ...  # internal hosts reachable inside this block
+        ...  # internal hosts are reachable inside this block
 except VPNError as exc:
     print(f"VPN setup failed: {exc}")
 ```
 
-When `auto_vpn.enabled` is not true, `auto_vpn_session` is a no-op that
-yields `None`, so the same `with` block works whether or not the VPN is
-wanted.
+When `auto_vpn.enabled` is not true, `auto_vpn_session` is a no‑op that yields
+`None`, so the same `with` block works whether or not the VPN is wanted.
 
-## Store your credentials
+### Store your credentials
 
+```sh
+python -m automatic_openconnect.secrets set --email you@example.org
 ```
-python -m automatic_openconnect.secrets set --email you@example.uni-graz.at
-```
 
-Prompts for your login password and TOTP base32 **seed** (the long
-string behind "Cannot scan?" in the authenticator setup — not the
-rotating 6-digit code). They are written to the OS keyring under the
-`openconnect-sso` service namespace.
+Prompts for your login password and TOTP base32 **seed** (the long string
+behind “Cannot scan?” in an authenticator's setup screen — not the rotating
+6‑digit code). They are written to the OS keyring under the `openconnect-sso`
+service namespace. The desktop app stores the same secrets for you.
+
+## Disclaimer
+
+This is a **community tool**, provided as is under the MIT licence, with no
+warranty and no affiliation with any VPN operator. Storing a TOTP seed in a
+keyring is your decision and your responsibility: if you enable it, keep disk
+encryption on (BitLocker / FileVault / LUKS) and a strong login password. The
+TOTP feature is opt‑in.
+
+<details>
+<summary>Note for University of Graz members</summary>
+
+Used against the official Uni Graz VPN, this tool is **not** an institutional
+product and is **not supported by uniIT**. OpenConnect may be used “auf eigenes
+Risiko und eigene Verantwortung” per the university policy
+([Mitteilungsblatt 2007‑08/31.a](https://mitteilungsblatt.uni-graz.at/de/2007-08/31.a/pdf/)).
+If you point the tool at a different organisation's VPN, follow that
+organisation's own policy instead.
+
+</details>
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).
 
 [openconnect-sso]: https://github.com/vlaci/openconnect-sso
+[OpenConnect‑GUI]: https://github.com/openconnect/openconnect-gui/releases
+[uv]: https://docs.astral.sh/uv/
