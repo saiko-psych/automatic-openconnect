@@ -1327,12 +1327,17 @@ class MainWindow(QWidget):
 
 
 def _app_version() -> str:
-    """Installed package version, or 'dev' when running from a checkout."""
+    """Version string for the About box. Tries installed package metadata,
+    then the bundled ``__version__`` (the frozen exe carries no dist-info)."""
     try:
         from importlib.metadata import version
         return version("automatic-openconnect")
     except Exception:
-        return "dev"
+        try:
+            import automatic_openconnect
+            return automatic_openconnect.__version__
+        except Exception:
+            return "dev"
 
 
 def _open_path(path: str) -> None:

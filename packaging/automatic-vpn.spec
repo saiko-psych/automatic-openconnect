@@ -23,7 +23,11 @@ a = Analysis(
         "keyring.backends.fail",
         "win32ctypes.core",
         "pyotp",
+        # pynput's Windows backends are imported dynamically — name them so the
+        # global TOTP hotkey works in the frozen exe.
         "pynput",
+        "pynput.keyboard._win32",
+        "pynput.mouse._win32",
     ],
     hookspath=[],
     hooksconfig={},

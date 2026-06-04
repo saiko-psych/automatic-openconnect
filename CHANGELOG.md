@@ -3,6 +3,40 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.1] - 2026-06-04
+
+### Added
+- **Global TOTP hotkey** (`Ctrl+Alt+P`): types the current 6-digit code into
+  the focused field. Releases held modifiers first so German/AltGr layouts
+  emit digits, not glyphs. Toggle in setup; seed pulled from the keyring.
+- **App settings** view (separate from the VPN configuration): start at
+  login (autostart), start minimised, tray notifications on/off; **light /
+  dark theme** + six accent colours (accent also recolours the action
+  icons); **user-pickable status colours** (connected / connecting /
+  disconnected / error) for the dot and the tray icon; on-exit behaviour;
+  open config/log folders; About & legal (MIT, third-party licences,
+  "not affiliated with Uni Graz / uniIT").
+- **In-app "Report a bug"** button → GitHub issue chooser, with bug-report /
+  feature-request issue-form templates.
+- **Wintun driver check** in the prerequisites checklist (advisory, never
+  blocks): warns if `wintun.dll` isn't found near openconnect.
+- Developer workflow: `python -m automatic_openconnect` entry point and a
+  `dev.ps1` helper (editable-venv run/test, cache-busting reinstall).
+
+### Changed
+- The setup form is now the single place for configuration and shows the
+  stored password + TOTP seed (masked, revealed by an in-field **eye icon**).
+- Leaving the configuration no longer requires re-running setup: a **Back**
+  button returns to the control view, and saving an existing setup no longer
+  triggers a second admin prompt.
+- The tray icon is rendered at runtime (coloured tile + padlock glyph) so any
+  chosen status colour works, replacing the fixed coloured `.ico` files.
+
+### Fixed
+- Reconfiguring no longer wipes the `ui` block (language / close-on-exit).
+- Checkbox indicators and combo-box arrows no longer clip (sub-controls are
+  now fully styled instead of mixing stylesheet and native rendering).
+
 ## [0.1.0] - 2026-06-04
 
 ### Added
