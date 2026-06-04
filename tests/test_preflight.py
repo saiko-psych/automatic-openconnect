@@ -90,9 +90,16 @@ class TestAutoFixes(unittest.TestCase):
         self.assertIn('fill = "totp"', content)
 
     def test_install_sso_command(self):
-        cmd = preflight.install_sso_command()
+        with mock.patch("automatic_openconnect.gui_logic.resolve_uv",
+                        return_value=["uv"]):
+            cmd = preflight.install_sso_command()
         self.assertEqual(cmd[:3], ["uv", "tool", "install"])
         self.assertIn("openconnect-sso", cmd)
+
+    def test_install_sso_command_empty_without_uv(self):
+        with mock.patch("automatic_openconnect.gui_logic.resolve_uv",
+                        return_value=[]):
+            self.assertEqual(preflight.install_sso_command(), [])
 
 
 class TestWintun(unittest.TestCase):

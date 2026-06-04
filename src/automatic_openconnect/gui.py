@@ -325,14 +325,46 @@ class PreflightDialog(QDialog):
         if self._proc is not None:
             return
         cmd = preflight.install_sso_command()
+        if not cmd:
+            # uv not found anywhere — offer to install it (official installer,
+            # no admin and no Python required).
+            ans = QMessageBox.question(
+                self, t("sso.uv_title"), t("sso.uv_msg"),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if ans == QMessageBox.StandardButton.Yes:
+                self._install_uv()
+            return
         self._proc = QProcess(self)
         self._proc.finished.connect(self._sso_done)
         self._clear()
         self._root.addWidget(QLabel(t("sso.installing")))
         self._proc.start(cmd[0], cmd[1:])
-        if not self._proc.waitForStarted(5000):
+        if not self._proc.waitForStarted(8000):
             QMessageBox.critical(self, t("generic.error"), t("sso.no_uv"))
             self._proc = None
+            self._rebuild()
+
+    def _install_uv(self):
+        if self._proc is not None:
+            return
+        self._proc = QProcess(self)
+        self._proc.finished.connect(self._uv_done)
+        self._clear()
+        self._root.addWidget(QLabel(t("sso.installing_uv")))
+        self._proc.start("powershell", [
+            "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+            "irm https://astral.sh/uv/install.ps1 | iex"])
+        if not self._proc.waitForStarted(8000):
+            QMessageBox.critical(self, t("generic.error"), t("sso.uv_fail"))
+            self._proc = None
+            self._rebuild()
+
+    def _uv_done(self, code, _status):
+        self._proc = None
+        if code == 0 and preflight.install_sso_command():
+            self._install_sso()   # uv is here now → continue with the login helper
+        else:
+            QMessageBox.warning(self, t("sso.uv_title"), t("sso.uv_fail"))
             self._rebuild()
 
     def _sso_done(self, code, _status):
@@ -416,8 +448,8 @@ class SetupView(QWidget):
 
         form.addRow(t("setup.email"), self.email)
         form.addRow(t("setup.server"), self.server)
-        form.addRow("openconnect.exe", self.oc)
-        form.addRow("openconnect-sso", self.sso)
+        form.addRow("openconnect.exe", self._with_browse(self.oc))
+        form.addRow("openconnect-sso", self._with_browse(self.sso))
         form.addRow(t("setup.password"), self.pw)
         form.addRow(t("setup.totp"), self.totp)
 
@@ -462,6 +494,28 @@ class SetupView(QWidget):
         submit.clicked.connect(self._submit)
         buttons.addWidget(submit, 1)
         form.addRow(_wrap(buttons))
+
+    def _with_browse(self, line_edit: QLineEdit) -> QWidget:
+        """Wrap a path field with a 'Browse…' button (works for any install
+        location, so a non-standard openconnect path is always selectable)."""
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        btn = QPushButton(t("setup.browse"))
+        btn.setObjectName("ghost")
+        btn.setFixedWidth(96)
+        btn.clicked.connect(lambda: self._browse(line_edit))
+        row.addWidget(line_edit)
+        row.addWidget(btn)
+        return _wrap(row)
+
+    def _browse(self, line_edit: QLineEdit) -> None:
+        start = os.path.dirname(line_edit.text()) if line_edit.text() else ""
+        path, _ = QFileDialog.getOpenFileName(
+            self, t("setup.browse"), start,
+            "Programs (*.exe);;All files (*)")
+        if path:
+            line_edit.setText(path)
+            line_edit.setCursorPosition(0)
 
     def _check_prereqs(self):
         show_preflight_dialog(self, self.email.text(),

@@ -67,6 +67,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     "setup.totp_hotkey": {
         "en": "Type the current 2FA code into any field with {combo}",
         "de": "Aktuellen 2FA-Code per {combo} in jedes Feld eintippen"},
+    "setup.browse": {"en": "Browse…", "de": "Durchsuchen…"},
     "setup.submit": {"en": "Set up (one-time admin prompt)",
                      "de": "Einrichten (einmaliger Admin-Dialog)"},
     "setup.save": {"en": "Save changes", "de": "Änderungen speichern"},
@@ -157,10 +158,14 @@ _STRINGS: dict[str, dict[str, str]] = {
     "check.credentials": {"en": "Credentials in keyring",
                           "de": "Zugangsdaten im Keyring"},
     "fix.openconnect": {
-        "en": "Install openconnect-gui (provides openconnect.exe + Wintun "
-              "driver), then enter the path in setup.",
-        "de": "openconnect-gui installieren (enthält openconnect.exe + "
-              "Wintun-Treiber), dann den Pfad im Setup eintragen."},
+        "en": "Install OpenConnect-GUI — you only install it, you don't have "
+              "to launch it. It provides openconnect.exe + the Wintun driver. "
+              "The app then auto-detects it; if not, use “Browse…” in setup to "
+              "point to openconnect.exe.",
+        "de": "OpenConnect-GUI installieren — nur installieren, starten musst "
+              "du es nicht. Es liefert openconnect.exe + den Wintun-Treiber. "
+              "Die App erkennt es danach automatisch; falls nicht, im Setup "
+              "über „Durchsuchen…“ auf openconnect.exe zeigen."},
     "fix.wintun": {
         "en": "wintun.dll wasn't found next to openconnect. It ships with "
               "OpenConnect-GUI — reinstalling it usually fixes this. Only "
@@ -168,8 +173,12 @@ _STRINGS: dict[str, dict[str, str]] = {
         "de": "wintun.dll wurde nicht neben openconnect gefunden. Sie kommt "
               "mit OpenConnect-GUI — eine Neuinstallation behebt das meist. "
               "Blockiert nur, wenn sie wirklich fehlt."},
-    "fix.sso": {"en": "Can be installed automatically via uv.",
-                "de": "Kann automatisch per uv installiert werden."},
+    "fix.sso": {
+        "en": "Installs via uv (no admin). Click below — if uv isn't on your "
+              "system yet, the app offers to install it for you first.",
+        "de": "Wird per uv installiert (keine Adminrechte). Unten klicken — "
+              "falls uv noch fehlt, bietet die App an, es vorher zu "
+              "installieren."},
     "fix.config": {"en": "The login-field template (config.toml) can be "
                          "created automatically.",
                    "de": "Die Login-Felder-Vorlage (config.toml) kann "
@@ -210,6 +219,23 @@ _STRINGS: dict[str, dict[str, str]] = {
               "manually.",
         "de": "uv nicht gefunden. Bitte uv installieren oder openconnect-sso "
               "manuell einrichten."},
+    "sso.installing_uv": {
+        "en": "Installing uv … (downloads the official uv installer)",
+        "de": "uv wird installiert … (lädt den offiziellen uv-Installer)"},
+    "sso.uv_title": {"en": "Install uv?", "de": "uv installieren?"},
+    "sso.uv_msg": {
+        "en": "openconnect-sso is installed with uv, which wasn't found on "
+              "your system. Install uv now? This downloads and runs the "
+              "official uv installer (no admin rights, no Python needed).",
+        "de": "openconnect-sso wird mit uv installiert, das auf deinem System "
+              "nicht gefunden wurde. uv jetzt installieren? Dabei wird der "
+              "offizielle uv-Installer geladen und ausgeführt (keine "
+              "Adminrechte, kein Python nötig)."},
+    "sso.uv_fail": {
+        "en": "Could not install uv automatically. Please install it manually "
+              "from https://astral.sh/uv and try again.",
+        "de": "uv konnte nicht automatisch installiert werden. Bitte manuell "
+              "von https://astral.sh/uv installieren und erneut versuchen."},
     # log dialog
     "log.title": {"en": "Connection log", "de": "Verbindungs-Log"},
     "log.empty": {"en": "No connection log yet.",

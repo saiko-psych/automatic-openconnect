@@ -11,11 +11,28 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 from typing import List
 
 from .config import is_configured
 
-_STD_OPENCONNECT = r"C:\Program Files\OpenConnect-GUI\openconnect.exe"
+# Common openconnect.exe locations (OpenConnect-GUI installs 32-bit by
+# default → Program Files (x86) on 64-bit Windows).
+_STD_OPENCONNECT_PATHS = [
+    r"C:\Program Files\OpenConnect-GUI\openconnect.exe",
+    r"C:\Program Files (x86)\OpenConnect-GUI\openconnect.exe",
+]
+_STD_OPENCONNECT = _STD_OPENCONNECT_PATHS[0]  # kept for back-compat
+
+
+def _user_tool_bin() -> str:
+    """Where uv places tool executables (and our own launcher): ~/.local/bin.
+    This is often NOT on PATH, so we look here explicitly."""
+    return os.path.join(os.path.expanduser("~"), ".local", "bin")
+
+
+def _no_window_flags() -> int:
+    return 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW
 
 
 def connect_step_label(log_text: str) -> str:
@@ -44,15 +61,66 @@ def choose_view(config: dict, registered: bool) -> str:
 
 
 def detect_openconnect() -> str:
-    """Best guess for openconnect.exe: standard install path, else PATH."""
-    if os.path.exists(_STD_OPENCONNECT):
-        return _STD_OPENCONNECT
+    """Best guess for openconnect.exe: known install paths, then PATH."""
+    for p in _STD_OPENCONNECT_PATHS:
+        if os.path.exists(p):
+            return p
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        cand = os.path.join(local, "Programs", "OpenConnect-GUI",
+                            "openconnect.exe")
+        if os.path.exists(cand):
+            return cand
     return shutil.which("openconnect") or ""
 
 
 def detect_openconnect_sso() -> str:
-    """Best guess for openconnect-sso(.exe): PATH lookup."""
-    return shutil.which("openconnect-sso") or ""
+    """Best guess for openconnect-sso(.exe): PATH, then uv's tool bin
+    (~/.local/bin), which uv tool installs into but rarely adds to PATH."""
+    found = shutil.which("openconnect-sso")
+    if found:
+        return found
+    for name in ("openconnect-sso.exe", "openconnect-sso"):
+        cand = os.path.join(_user_tool_bin(), name)
+        if os.path.exists(cand):
+            return cand
+    return ""
+
+
+def resolve_uv() -> List[str]:
+    """Find a usable uv invocation, as a command-prefix list (empty if none).
+
+    Handles all the ways uv ends up installed:
+      * on PATH (official installer / winget / already configured),
+      * in ~/.local/bin (official installer location, often not on PATH),
+      * pip-installed into a Python's Scripts dir (also often not on PATH).
+    """
+    found = shutil.which("uv")
+    if found:
+        return [found]
+    cand = os.path.join(_user_tool_bin(), "uv.exe")
+    if os.path.exists(cand):
+        return [cand]
+    # pip install uv → uv.exe in a Python Scripts dir we can ask Python for.
+    py = (shutil.which("python") or shutil.which("py")
+          or shutil.which("python3"))
+    if py:
+        import json
+        import subprocess
+        code = ("import sysconfig, site, os, json;"
+                "print(json.dumps([sysconfig.get_path('scripts'),"
+                " os.path.join(site.getuserbase(), 'Scripts')]))")
+        try:
+            out = subprocess.run([py, "-c", code], capture_output=True,
+                                 text=True, timeout=10,
+                                 creationflags=_no_window_flags()).stdout
+            for d in json.loads(out.strip() or "[]"):
+                exe = os.path.join(d, "uv.exe")
+                if os.path.exists(exe):
+                    return [exe]
+        except Exception:
+            pass
+    return []
 
 
 def validate_setup_form(fields: dict) -> List[str]:

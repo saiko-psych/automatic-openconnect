@@ -1,0 +1,22 @@
+<Configuration>
+  <!-- Clean-machine test for automatic-vpn.exe in Windows Sandbox.
+       Double-click this file (after enabling the Sandbox feature). The
+       Sandbox is a fresh, disposable Windows with no Python/deps installed —
+       exactly what a new tester's PC looks like. Everything resets on close. -->
+  <Networking>Enable</Networking>
+  <MappedFolders>
+    <MappedFolder>
+      <HostFolder>C:\Users\David\Nextcloud2\Documents\claude\Termino python skript\automatic-openconnect\dist</HostFolder>
+      <SandboxFolder>C:\Users\WDAGUtilityAccount\Desktop\app</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+    <MappedFolder>
+      <HostFolder>C:\Users\David\Nextcloud2\Documents\claude\Termino python skript\automatic-openconnect\testing</HostFolder>
+      <SandboxFolder>C:\Users\WDAGUtilityAccount\Desktop\testing</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+  <LogonCommand>
+    <Command>explorer.exe C:\Users\WDAGUtilityAccount\Desktop\app</Command>
+  </LogonCommand>
+</Configuration>

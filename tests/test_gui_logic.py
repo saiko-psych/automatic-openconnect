@@ -121,3 +121,40 @@ class TestDetect(unittest.TestCase):
              mock.patch("automatic_openconnect.gui_logic.shutil.which", return_value=r"C:\x\openconnect-sso.exe"):
             self.assertEqual(gl.detect_openconnect_sso(),
                              r"C:\x\openconnect-sso.exe")
+
+    def test_detect_openconnect_finds_program_files_x86(self):
+        x86 = r"C:\Program Files (x86)\OpenConnect-GUI\openconnect.exe"
+        with mock.patch("automatic_openconnect.gui_logic.os.path.exists",
+                        side_effect=lambda p: p == x86):
+            self.assertEqual(gl.detect_openconnect(), x86)
+
+    def test_detect_sso_falls_back_to_user_tool_bin(self):
+        with mock.patch("automatic_openconnect.gui_logic.shutil.which",
+                        return_value=None), \
+             mock.patch("automatic_openconnect.gui_logic.os.path.exists",
+                        side_effect=lambda p: p.endswith("openconnect-sso.exe")):
+            self.assertTrue(
+                gl.detect_openconnect_sso().endswith("openconnect-sso.exe"))
+
+
+class TestResolveUv(unittest.TestCase):
+    def test_uses_uv_on_path(self):
+        with mock.patch("automatic_openconnect.gui_logic.shutil.which",
+                        return_value=r"C:\bin\uv.exe"):
+            self.assertEqual(gl.resolve_uv(), [r"C:\bin\uv.exe"])
+
+    def test_finds_uv_in_user_tool_bin(self):
+        with mock.patch("automatic_openconnect.gui_logic.shutil.which",
+                        return_value=None), \
+             mock.patch("automatic_openconnect.gui_logic.os.path.exists",
+                        side_effect=lambda p: p.endswith("uv.exe")):
+            r = gl.resolve_uv()
+        self.assertEqual(len(r), 1)
+        self.assertTrue(r[0].endswith("uv.exe"))
+
+    def test_empty_when_uv_absent_and_no_python(self):
+        with mock.patch("automatic_openconnect.gui_logic.shutil.which",
+                        return_value=None), \
+             mock.patch("automatic_openconnect.gui_logic.os.path.exists",
+                        return_value=False):
+            self.assertEqual(gl.resolve_uv(), [])

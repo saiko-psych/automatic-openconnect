@@ -173,9 +173,14 @@ def create_config_toml() -> str:
 
 
 def install_sso_command() -> List[str]:
-    """argv to install openconnect-sso as a uv tool (network, no admin)."""
-    return ["uv", "tool", "install", "--with", "PyQt6",
-            "--with", "setuptools<70", "openconnect-sso"]
+    """argv to install openconnect-sso as a uv tool (network, no admin).
+    Returns [] if uv cannot be located — the GUI then offers to install uv."""
+    from .gui_logic import resolve_uv
+    uv = resolve_uv()
+    if not uv:
+        return []
+    return uv + ["tool", "install", "--with", "PyQt6",
+                 "--with", "setuptools<70", "openconnect-sso"]
 
 
 def check_all(email: Optional[str] = None,
