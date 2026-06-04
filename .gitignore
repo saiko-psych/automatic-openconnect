@@ -36,3 +36,6 @@ secrets.toml
 *.local.json
 *.pem
 *.key
+
+# PyInstaller build venv
+.build-venv/

@@ -47,6 +47,18 @@ class TestBuilders(unittest.TestCase):
         self.assertNotIn(r"'C:\py\python.exe'", script)
         self.assertIn('--config "C:\\cfg.json"', script)
 
+    def test_register_script_frozen_runs_exe_directly(self):
+        # Frozen (PyInstaller) build: the task runs the app exe with the
+        # up/down subcommand — no python, no `-m module`.
+        script = tw.build_register_script(
+            r"C:\app\automatic-vpn.exe", r"C:\cfg.json", frozen=True)
+        self.assertNotIn('\\"', script)
+        self.assertNotIn("-m automatic_openconnect", script)
+        self.assertNotIn("pythonw", script)
+        self.assertIn(r"-Execute 'C:\app\automatic-vpn.exe'", script)
+        self.assertIn('up --config "C:\\cfg.json"', script)
+        self.assertIn('down --config "C:\\cfg.json"', script)
+
     def test_elevated_launch_uses_runas_and_encodedcommand(self):
         argv = tw.build_elevated_launch("Write-Host hi")
         joined = " ".join(argv)

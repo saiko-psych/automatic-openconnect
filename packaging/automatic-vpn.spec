@@ -1,0 +1,51 @@
+# -*- mode: python ; coding: utf-8 -*-
+# PyInstaller spec for the standalone Windows app (one-file, windowed).
+# Build:  pyinstaller packaging/automatic-vpn.spec --noconfirm
+# Output: dist/automatic-vpn.exe
+import os
+
+_assets = os.path.join(SPECPATH, "..", "src", "automatic_openconnect", "assets")
+_icon = os.path.join(_assets, "icon.ico")
+
+a = Analysis(
+    [os.path.join(SPECPATH, "entry.py")],
+    pathex=[],
+    binaries=[],
+    # Bundle the icons so importlib.resources finds them when frozen.
+    datas=[(_assets, "automatic_openconnect/assets")],
+    hiddenimports=[
+        # cv2 is imported lazily inside qr.decode_qr_image, so static
+        # analysis misses it — name it explicitly to bundle QR support.
+        "cv2",
+        # keyring discovers backends via entry points PyInstaller can't see.
+        "keyring.backends.Windows",
+        "keyring.backends.chainer",
+        "keyring.backends.fail",
+        "win32ctypes.core",
+        "pyotp",
+        "pynput",
+    ],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[],
+    noarchive=False,
+)
+pyz = PYZ(a.pure)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.datas,
+    [],
+    name="automatic-vpn",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=False,
+    runtime_tmpdir=None,
+    console=False,          # windowed; CLI mode writes to the connect log
+    disable_windowed_traceback=False,
+    icon=_icon,
+)

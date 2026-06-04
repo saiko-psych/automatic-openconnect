@@ -58,11 +58,11 @@ qr = ["opencv-python-headless>=4.8"]
 [project.gui-scripts]
 # Windowed entry point (no console window). Requires the `gui` extra or
 # the PyQt6 that openconnect-sso pulls in via `uv tool install --with PyQt6`.
-automatic-vpn = "automatic_openconnect.gui:main"
+automatic-vpn = "automatic_openconnect.gui:run"
 
 [project.scripts]
 # Console-attached variant of the same app, handy for seeing tracebacks.
-automatic-vpn-console = "automatic_openconnect.gui:main"
+automatic-vpn-console = "automatic_openconnect.gui:run"
 
 [project.urls]
 Homepage = "https://github.com/saiko-psych/automatic-openconnect"
