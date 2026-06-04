@@ -26,9 +26,11 @@ CONFIG_TOML = os.path.join(os.path.expanduser("~"), ".config",
                            "openconnect-sso", "config.toml")
 
 
-# openconnect-gui releases page (provides openconnect.exe + Wintun driver).
-OPENCONNECT_GUI_RELEASES = \
-    "https://github.com/openconnect/openconnect-gui/releases"
+# Official OpenConnect-GUI download page. NOT the GitHub releases page —
+# that one has no assets, which is why testers ended up grabbing loose
+# openconnect.exe files that don't work. The installer here bundles
+# openconnect.exe + its DLLs + the vpnc routing script + the Wintun driver.
+OPENCONNECT_GUI_RELEASES = "https://gui.openconnect-vpn.net/download/"
 
 
 @dataclass
@@ -84,6 +86,35 @@ def check_wintun(openconnect_path: str = "") -> Check:
     ok = _wintun_present(openconnect_path)
     return Check("check.wintun", ok,
                  "" if ok else "fix.wintun",
+                 "" if ok else "open_download",
+                 warn_only=True)
+
+
+def _vpnc_script_present(openconnect_path: str = "") -> bool:
+    """Is openconnect's routing script next to it? OpenConnect-GUI ships
+    vpnc-script-win.js; a loose openconnect.exe won't have it."""
+    p = (openconnect_path or "").strip()
+    oc_dir = os.path.dirname(p) if (p and os.path.exists(p)) else ""
+    if not oc_dir:
+        d = detect_openconnect()
+        oc_dir = os.path.dirname(d) if d else ""
+    if not oc_dir:
+        return False
+    return any(os.path.exists(os.path.join(oc_dir, n))
+               for n in ("vpnc-script-win.js", "vpnc-script.js"))
+
+
+def check_vpnc_script(openconnect_path: str = "") -> Check:
+    """Warn (never block) if openconnect's routing script isn't beside it —
+    the tell-tale of a loose openconnect.exe instead of a full OpenConnect-GUI
+    install. Without it the tunnel fails with 'canonicalize script path'."""
+    oc = (openconnect_path or "").strip()
+    oc_found = (bool(oc) and os.path.exists(oc)) or bool(detect_openconnect())
+    if not oc_found:
+        return Check("check.vpnc", True, warn_only=True)
+    ok = _vpnc_script_present(openconnect_path)
+    return Check("check.vpnc", ok,
+                 "" if ok else "fix.vpnc",
                  "" if ok else "open_download",
                  warn_only=True)
 
@@ -192,6 +223,7 @@ def check_all(email: Optional[str] = None,
     return [
         check_openconnect(openconnect_path),
         check_wintun(openconnect_path),
+        check_vpnc_script(openconnect_path),
         check_openconnect_sso(openconnect_sso_path),
         check_config_toml(),
         check_credentials(email),

@@ -153,5 +153,22 @@ class TestCheckAll(unittest.TestCase):
                 email="x@uni-graz.at",
                 openconnect_path=r"C:\oc\openconnect.exe",
                 openconnect_sso_path=r"C:\oc\openconnect-sso.exe")
-        self.assertEqual(len(checks), 5)
+        self.assertEqual(len(checks), 6)
         self.assertTrue(preflight.all_ok(checks))
+
+
+class TestVpncScript(unittest.TestCase):
+    def test_warns_when_script_missing(self):
+        with mock.patch("automatic_openconnect.preflight.os.path.exists",
+                        side_effect=lambda p: p.endswith("openconnect.exe")):
+            c = preflight.check_vpnc_script(r"C:\dl\openconnect.exe")
+        self.assertFalse(c.ok)
+        self.assertTrue(c.warn_only)
+        self.assertEqual(c.fix, "fix.vpnc")
+
+    def test_ok_when_script_next_to_exe(self):
+        with mock.patch("automatic_openconnect.preflight.os.path.exists",
+                        return_value=True):
+            c = preflight.check_vpnc_script(r"C:\oc\openconnect.exe")
+        self.assertTrue(c.ok)
+        self.assertTrue(c.warn_only)

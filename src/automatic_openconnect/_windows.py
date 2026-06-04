@@ -304,6 +304,22 @@ def _authenticate(cfg: dict) -> Tuple[str, str, str]:
     sso_override = cfg.get("openconnect_sso_path_win") or cfg.get("openconnect_sso_path", "")
     sso_path = _resolve_tool("openconnect-sso", sso_override)
 
+    # openconnect-sso shells out to `openconnect` via PATH. Prepend OUR
+    # configured openconnect's folder so it uses the complete OpenConnect-GUI
+    # install (with its DLLs + vpnc routing script) instead of whatever loose
+    # openconnect happens to be on PATH — otherwise auth fails with
+    # "Failed to canonicalize script path".
+    from .gui_logic import normalize_openconnect_path
+    env = os.environ.copy()
+    oc_override = cfg.get("openconnect_path_win") or cfg.get("openconnect_path", "")
+    try:
+        oc_path = normalize_openconnect_path(_resolve_tool("openconnect", oc_override))
+        oc_dir = os.path.dirname(oc_path)
+        if oc_dir and os.path.isdir(oc_dir):
+            env["PATH"] = oc_dir + os.pathsep + env.get("PATH", "")
+    except Exception:
+        pass
+
     cmd = [
         sso_path,
         "-u", cfg["user_email"],
@@ -325,6 +341,7 @@ def _authenticate(cfg: dict) -> Tuple[str, str, str]:
         result = subprocess.run(
             cmd,
             creationflags=_NO_WINDOW,
+            env=env,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -372,8 +389,9 @@ def _start_tunnel(host: str, cookie: str, fingerprint: str,
     process and keep the handle for teardown.
     """
     _check_admin()
+    from .gui_logic import normalize_openconnect_path
     oc_override = cfg.get("openconnect_path_win") or cfg.get("openconnect_path", "")
-    oc_path = _resolve_tool("openconnect", oc_override)
+    oc_path = normalize_openconnect_path(_resolve_tool("openconnect", oc_override))
 
     cmd = [
         oc_path,

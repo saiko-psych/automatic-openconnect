@@ -37,11 +37,15 @@ class TestValidateSetupForm(unittest.TestCase):
             errs = gl.validate_setup_form(f)
         self.assertTrue(any("mail" in e.lower() for e in errs))
 
-    def test_error_when_openconnect_missing(self):
+    def test_missing_paths_do_not_block_saving(self):
+        # Tools are checked by the prerequisites dialog, not here — so a
+        # missing/empty path must NOT block saving (else you get stuck on a
+        # stale path you can't change).
         f = self._ok_fields()
+        f["openconnect_path"] = ""
+        f["openconnect_sso_path"] = r"C:\does\not\exist.exe"
         with mock.patch("automatic_openconnect.gui_logic.os.path.exists", return_value=False):
-            errs = gl.validate_setup_form(f)
-        self.assertTrue(any("openconnect" in e.lower() for e in errs))
+            self.assertEqual(gl.validate_setup_form(f), [])
 
     def test_error_when_email_whitespace_only(self):
         f = self._ok_fields(); f["email"] = "   "
@@ -135,6 +139,25 @@ class TestDetect(unittest.TestCase):
                         side_effect=lambda p: p.endswith("openconnect-sso.exe")):
             self.assertTrue(
                 gl.detect_openconnect_sso().endswith("openconnect-sso.exe"))
+
+
+class TestNormalizeOpenconnectPath(unittest.TestCase):
+    def test_gui_exe_becomes_cli(self):
+        gui = r"C:\Program Files\OpenConnect-GUI\openconnect-gui.exe"
+        cli = r"C:\Program Files\OpenConnect-GUI\openconnect.exe"
+        with mock.patch("automatic_openconnect.gui_logic.os.path.exists",
+                        side_effect=lambda p: p == cli):
+            self.assertEqual(gl.normalize_openconnect_path(gui), cli)
+
+    def test_plain_openconnect_unchanged(self):
+        cli = r"C:\Program Files\OpenConnect-GUI\openconnect.exe"
+        self.assertEqual(gl.normalize_openconnect_path(cli), cli)
+
+    def test_gui_exe_kept_if_no_cli_sibling(self):
+        gui = r"C:\x\openconnect-gui.exe"
+        with mock.patch("automatic_openconnect.gui_logic.os.path.exists",
+                        return_value=False):
+            self.assertEqual(gl.normalize_openconnect_path(gui), gui)
 
 
 class TestResolveUv(unittest.TestCase):

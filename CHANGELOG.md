@@ -3,6 +3,31 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.4] - 2026-06-05
+
+Fixes the "all prerequisites OK but connect fails" class of tester problems —
+they came down to an incomplete openconnect, the wrong exe, or a wrong link.
+
+### Fixed
+- **Download link** now points to the official OpenConnect-GUI installer
+  (`gui.openconnect-vpn.net/download`). The old GitHub-releases link has no
+  assets, which is why testers grabbed loose `openconnect.exe` files that
+  don't work.
+- **Wrong exe**: picking `openconnect-gui.exe` (the graphical client) is now
+  auto-corrected to `openconnect.exe` (the CLI engine) in the same folder.
+- **`Failed to canonicalize script path`**: openconnect-sso now runs *our*
+  configured openconnect (its folder is prepended to PATH), so it uses the
+  complete OpenConnect-GUI install (DLLs + routing script) instead of a random
+  one on PATH.
+- You can now always **save and leave the configuration**: only email + server
+  are required; tool paths are checked by the prerequisites dialog, not the
+  save — so a stale/empty path no longer traps you.
+
+### Added
+- **Routing-script check** in the prerequisites list: warns when
+  `vpnc-script-win.js` isn't next to openconnect (i.e. a loose .exe rather
+  than a full install) — the cause of the "canonicalize script path" failure.
+
 ## [0.1.3] - 2026-06-05
 
 More clean-machine tester fixes.

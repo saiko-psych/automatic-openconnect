@@ -60,6 +60,18 @@ def choose_view(config: dict, registered: bool) -> str:
     return "control"
 
 
+def normalize_openconnect_path(path: str) -> str:
+    """If the user picked ``openconnect-gui.exe`` (the graphical client),
+    point to ``openconnect.exe`` (the CLI engine) in the same folder — they
+    sit side by side and are easy to confuse."""
+    p = (path or "").strip()
+    if os.path.basename(p).lower() == "openconnect-gui.exe":
+        cli = os.path.join(os.path.dirname(p), "openconnect.exe")
+        if os.path.exists(cli):
+            return cli
+    return p
+
+
 def detect_openconnect() -> str:
     """Best guess for openconnect.exe: known install paths, then PATH."""
     for p in _STD_OPENCONNECT_PATHS:
@@ -124,18 +136,18 @@ def resolve_uv() -> List[str]:
 
 
 def validate_setup_form(fields: dict) -> List[str]:
-    """Return a list of error KEYS (translated by the GUI); empty = valid."""
+    """Return a list of error KEYS (translated by the GUI); empty = valid.
+
+    Only email + server are required to SAVE. The openconnect / openconnect-sso
+    tools are verified by the prerequisites dialog before a connect, NOT here —
+    so you can always save and leave the config (e.g. to fix a stale path)
+    instead of being trapped by a path that doesn't exist yet.
+    """
     errors: List[str] = []
     if not (fields.get("email") or "").strip():
         errors.append("err.email_empty")
     if not (fields.get("server") or "").strip():
         errors.append("err.server_empty")
-    oc = (fields.get("openconnect_path") or "").strip()
-    if not oc or not os.path.exists(oc):
-        errors.append("err.openconnect_missing")
-    sso = (fields.get("openconnect_sso_path") or "").strip()
-    if not sso or not os.path.exists(sso):
-        errors.append("err.sso_missing")
     return errors
 
 

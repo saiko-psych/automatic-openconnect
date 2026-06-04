@@ -159,6 +159,8 @@ _STRINGS: dict[str, dict[str, str]] = {
                           "de": "openconnect.exe — VPN-Engine"},
     "check.wintun": {"en": "Wintun driver — tunnel adapter",
                      "de": "Wintun-Treiber — Tunnel-Adapter"},
+    "check.vpnc": {"en": "Routing script — full install",
+                   "de": "Routing-Script — vollständige Installation"},
     "check.sso": {"en": "openconnect-sso — login",
                   "de": "openconnect-sso — Login"},
     "check.config": {"en": "config.toml — login fields",
@@ -166,14 +168,17 @@ _STRINGS: dict[str, dict[str, str]] = {
     "check.credentials": {"en": "Credentials in keyring",
                           "de": "Zugangsdaten im Keyring"},
     "fix.openconnect": {
-        "en": "Install OpenConnect-GUI — you only install it, you don't have "
-              "to launch it. It provides openconnect.exe + the Wintun driver. "
-              "The app then auto-detects it; if not, use “Browse…” in setup to "
-              "point to openconnect.exe.",
-        "de": "OpenConnect-GUI installieren — nur installieren, starten musst "
-              "du es nicht. Es liefert openconnect.exe + den Wintun-Treiber. "
-              "Die App erkennt es danach automatisch; falls nicht, im Setup "
-              "über „Durchsuchen…“ auf openconnect.exe zeigen."},
+        "en": "Install OpenConnect-GUI with the official installer (you only "
+              "install it, you don't launch it). A single loose openconnect.exe "
+              "does NOT work — it needs its DLLs + routing script + the Wintun "
+              "driver, which the installer sets up together. The app then "
+              "auto-detects it; if not, use “Browse…” in setup.",
+        "de": "OpenConnect-GUI mit dem offiziellen Installer installieren (nur "
+              "installieren, nicht starten). Eine einzelne lose openconnect.exe "
+              "funktioniert NICHT — sie braucht ihre DLLs + das Routing-Script "
+              "+ den Wintun-Treiber, die der Installer zusammen einrichtet. "
+              "Die App erkennt sie danach automatisch; falls nicht, im Setup "
+              "über „Durchsuchen…“."},
     "fix.wintun": {
         "en": "wintun.dll wasn't found next to openconnect. It ships with "
               "OpenConnect-GUI — reinstalling it usually fixes this. Only "
@@ -181,6 +186,19 @@ _STRINGS: dict[str, dict[str, str]] = {
         "de": "wintun.dll wurde nicht neben openconnect gefunden. Sie kommt "
               "mit OpenConnect-GUI — eine Neuinstallation behebt das meist. "
               "Blockiert nur, wenn sie wirklich fehlt."},
+    "fix.vpnc": {
+        "en": "openconnect's routing script (vpnc-script-win.js) isn't next "
+              "to openconnect.exe — a sign of a loose .exe, not a full "
+              "OpenConnect-GUI install. Connecting will fail with "
+              "'canonicalize script path'. Install the full OpenConnect-GUI "
+              "from the official installer (it bundles the script + DLLs + "
+              "driver).",
+        "de": "openconnect's Routing-Script (vpnc-script-win.js) liegt nicht "
+              "neben openconnect.exe — Zeichen für eine lose .exe statt einer "
+              "vollständigen OpenConnect-GUI-Installation. Der Connect "
+              "scheitert mit 'canonicalize script path'. Installiere die "
+              "vollständige OpenConnect-GUI über den offiziellen Installer "
+              "(enthält Script + DLLs + Treiber)."},
     "fix.sso": {
         "en": "Installs via uv (no admin). Click below — if uv isn't on your "
               "system yet, the app offers to install it for you first.",

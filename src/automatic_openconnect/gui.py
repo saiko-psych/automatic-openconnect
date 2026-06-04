@@ -342,6 +342,7 @@ class PreflightDialog(QDialog):
             "openconnect.exe (openconnect.exe);;Programs (*.exe);;All files (*)")
         if not path:
             return
+        path = gl.normalize_openconnect_path(path)  # gui.exe → openconnect.exe
         # Persist so setup and the backend use it, then re-check live.
         self._oc = path
         data = cfgmod.load_config()
@@ -565,6 +566,8 @@ class SetupView(QWidget):
             self, t("setup.browse"), start,
             "Programs (*.exe);;All files (*)")
         if path:
+            if line_edit is self.oc:
+                path = gl.normalize_openconnect_path(path)  # gui.exe → cli
             line_edit.setText(path)
             line_edit.setCursorPosition(0)
 
