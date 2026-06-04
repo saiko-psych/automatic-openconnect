@@ -339,5 +339,31 @@ class TestCliDownRespectsConfig(unittest.TestCase):
                              ["csc_vpnagent", "MullvadVPN"])
 
 
+class TestConfiguredServiceTargets(unittest.TestCase):
+    """Generic `conflicting_services` list, with legacy back-compat."""
+
+    def test_generic_list(self):
+        from automatic_openconnect._windows import _configured_service_targets
+        cfg = {"stop_conflicting_services": True,
+               "conflicting_services": ["FooVPN", "BarVPN"]}
+        self.assertEqual(_configured_service_targets(cfg), ["FooVPN", "BarVPN"])
+
+    def test_generic_disabled(self):
+        from automatic_openconnect._windows import _configured_service_targets
+        cfg = {"stop_conflicting_services": False,
+               "conflicting_services": ["FooVPN"]}
+        self.assertEqual(_configured_service_targets(cfg), [])
+
+    def test_legacy_flags_still_work(self):
+        from automatic_openconnect._windows import _configured_service_targets
+        cfg = {"stop_cisco_during_run": True, "stop_mullvad_during_run": False}
+        self.assertEqual(_configured_service_targets(cfg), ["csc_vpnagent"])
+
+    def test_empty_cfg_defaults_to_both(self):
+        from automatic_openconnect._windows import _configured_service_targets
+        self.assertEqual(_configured_service_targets({}),
+                         ["csc_vpnagent", "MullvadVPN"])
+
+
 if __name__ == "__main__":
     unittest.main()

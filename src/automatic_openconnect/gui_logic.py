@@ -71,10 +71,20 @@ def validate_setup_form(fields: dict) -> List[str]:
     return errors
 
 
+def parse_services(text: str) -> list:
+    """Parse a comma/whitespace-separated list of service names."""
+    return [s.strip() for s in (text or "").replace(",", " ").split()
+            if s.strip()]
+
+
 def build_auto_vpn_config(*, email: str, server: str, openconnect_path: str,
-                          openconnect_sso_path: str, stop_cisco: bool,
-                          stop_mullvad: bool) -> dict:
+                          openconnect_sso_path: str,
+                          stop_conflicting: bool = True,
+                          conflicting_services: list = None) -> dict:
     """Build the config.json dict the _windows backend consumes."""
+    from ._windows import DEFAULT_CONFLICTING_SERVICES
+    services = (conflicting_services if conflicting_services is not None
+                else list(DEFAULT_CONFLICTING_SERVICES))
     return {
         "auto_vpn": {
             "enabled": True,
@@ -82,8 +92,8 @@ def build_auto_vpn_config(*, email: str, server: str, openconnect_path: str,
             "server": server.strip(),
             "openconnect_path": openconnect_path.strip(),
             "openconnect_sso_path": openconnect_sso_path.strip(),
-            "stop_cisco_during_run": bool(stop_cisco),
-            "stop_mullvad_during_run": bool(stop_mullvad),
+            "stop_conflicting_services": bool(stop_conflicting),
+            "conflicting_services": services,
             "down_on_exit": True,
         }
     }

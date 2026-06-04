@@ -40,16 +40,24 @@ class Check:
 
 
 def check_openconnect(path: str = "") -> Check:
-    p = (path or "").strip() or detect_openconnect()
+    # Use the configured path if it resolves; otherwise re-detect LIVE so a
+    # tool installed after setup (or under a stale/empty path) is still found.
+    p = (path or "").strip()
     ok = bool(p) and os.path.exists(p)
+    if not ok:
+        d = detect_openconnect()
+        ok = bool(d) and os.path.exists(d)
     return Check("check.openconnect", ok,
                  "" if ok else "fix.openconnect",
                  "" if ok else "open_download")
 
 
 def check_openconnect_sso(path: str = "") -> Check:
-    p = (path or "").strip() or detect_openconnect_sso()
+    p = (path or "").strip()
     ok = bool(p) and os.path.exists(p)
+    if not ok:
+        d = detect_openconnect_sso()
+        ok = bool(d) and os.path.exists(d)
     return Check("check.sso", ok,
                  "" if ok else "fix.sso",
                  "" if ok else "install_sso")

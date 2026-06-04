@@ -213,14 +213,25 @@ def _service_status(name: str) -> Optional[str]:
         return None
 
 
-def _configured_service_targets(cfg: dict) -> List[str]:
-    """Service names this app is configured to manage for a tunnel.
+DEFAULT_CONFLICTING_SERVICES = ["csc_vpnagent", "MullvadVPN"]
 
-    ``cfg`` is the ``auto_vpn`` sub-dict. Both flags default to True, so
-    a config that omits them keeps the historical "stop Cisco + Mullvad"
-    behavior. Shared by the stop path (_stop_conflicting_services) and
-    the CLI ``down`` restart path so the two never drift apart.
+
+def _configured_service_targets(cfg: dict) -> List[str]:
+    """Windows service names to stop while the tunnel is up (and restart
+    after). ``cfg`` is the ``auto_vpn`` sub-dict.
+
+    Generic form (current): ``stop_conflicting_services`` (bool, default
+    True) + ``conflicting_services`` (list of service names, default Cisco
+    + Mullvad). Back-compatible with the old per-service flags
+    ``stop_cisco_during_run`` / ``stop_mullvad_during_run``. Shared by the
+    stop path and the CLI ``down`` restart path so they never drift apart.
     """
+    if "conflicting_services" in cfg or "stop_conflicting_services" in cfg:
+        if not cfg.get("stop_conflicting_services", True):
+            return []
+        return [s for s in (cfg.get("conflicting_services")
+                            or DEFAULT_CONFLICTING_SERVICES) if s]
+    # legacy per-service flags
     targets = []
     if cfg.get("stop_cisco_during_run", True):
         targets.append("csc_vpnagent")

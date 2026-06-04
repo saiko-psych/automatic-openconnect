@@ -37,7 +37,8 @@ from . import qr
 from . import session
 from . import tasks_windows as tw
 from ._windows import is_vpn_up, connect_log_path
-from .secrets import set_uni_login_password, set_uni_totp_secret
+from .secrets import (get_uni_login_password, get_uni_totp_secret,
+                      set_uni_login_password, set_uni_totp_secret)
 
 # How many 2-second status polls to wait for the tunnel before declaring
 # the connect attempt failed. Must exceed the backend's worst case (auth +
@@ -85,6 +86,30 @@ def _wrap(layout) -> QWidget:
     return w
 
 
+def _reveal_toggle(line_edit: QLineEdit) -> QPushButton:
+    """A small Show/Hide button that reveals a masked field (the 'eye')."""
+    btn = QPushButton(t("btn.show"))
+    btn.setObjectName("ghost")
+    btn.setCheckable(True)
+    btn.setMaximumWidth(110)
+
+    def _toggle(checked: bool) -> None:
+        line_edit.setEchoMode(QLineEdit.EchoMode.Normal if checked
+                              else QLineEdit.EchoMode.Password)
+        btn.setText(t("btn.hide") if checked else t("btn.show"))
+
+    btn.toggled.connect(_toggle)
+    return btn
+
+
+def _field_with_button(line_edit: QLineEdit, button: QPushButton) -> QWidget:
+    row = QHBoxLayout()
+    row.setContentsMargins(0, 0, 0, 0)
+    row.addWidget(line_edit)
+    row.addWidget(button)
+    return _wrap(row)
+
+
 _FIX_LABELS = {
     "open_download": "fixbtn.open_download",
     "install_sso": "fixbtn.install_sso",
@@ -105,6 +130,16 @@ class PreflightDialog(QDialog):
         self.resize(720, 460)
         self._root = QVBoxLayout(self)
         self._rebuild()
+        # Real-time tracking: while the checklist is open, re-check the
+        # prerequisites every few seconds so it reflects reality live (e.g.
+        # after you install a tool or create the config in another window).
+        self._poll = QTimer(self)
+        self._poll.timeout.connect(self._tick)
+        self._poll.start(2500)
+
+    def _tick(self):
+        if self._proc is None:   # don't clobber an in-progress install view
+            self._rebuild()
 
     def _clear(self):
         while self._root.count():
@@ -191,6 +226,51 @@ def show_preflight_dialog(parent, email: str, oc_path: str, sso_path: str,
     PreflightDialog(parent, email, oc_path, sso_path, on_setup).exec()
 
 
+class ConfigDialog(QDialog):
+    """Read-only view of the current configuration plus the stored
+    credentials. Password and TOTP seed are masked, revealable with the
+    Show/Hide (eye) button."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setWindowTitle(t("cfg.title"))
+        self.resize(640, 440)
+        form = QFormLayout(self)
+        av = (cfgmod.load_config().get("auto_vpn") or {})
+
+        def ro(text: str) -> QLineEdit:
+            le = QLineEdit(str(text))
+            le.setReadOnly(True)
+            return le
+
+        form.addRow(t("setup.email"), ro(av.get("user_email", "")))
+        form.addRow(t("setup.server"), ro(av.get("server", "")))
+        form.addRow("openconnect.exe", ro(av.get("openconnect_path", "")))
+        form.addRow("openconnect-sso", ro(av.get("openconnect_sso_path", "")))
+        from ._windows import _configured_service_targets
+        form.addRow(t("setup.services"),
+                    ro(", ".join(_configured_service_targets(av))))
+
+        email = av.get("user_email", "")
+        try:
+            pw = (get_uni_login_password(email) or "") if email else ""
+            seed = (get_uni_totp_secret(email) or "") if email else ""
+        except Exception:
+            pw = seed = ""
+        form.addRow(t("cfg.password"), self._secret_row(pw))
+        form.addRow(t("cfg.totp"), self._secret_row(seed))
+
+    def _secret_row(self, value: str) -> QWidget:
+        le = QLineEdit()
+        le.setReadOnly(True)
+        if value:
+            le.setText(value)
+            le.setEchoMode(QLineEdit.EchoMode.Password)
+            return _field_with_button(le, _reveal_toggle(le))
+        le.setText(t("cfg.none"))
+        return le
+
+
 class SetupView(QWidget):
     def __init__(self, on_done):
         super().__init__()
@@ -204,21 +284,28 @@ class SetupView(QWidget):
         self.sso = QLineEdit(existing.get("openconnect_sso_path") or gl.detect_openconnect_sso())
         self.pw = QLineEdit()
         self.pw.setEchoMode(QLineEdit.EchoMode.Password)
+        self.pw.setPlaceholderText(t("setup.pw_ph"))
         self.totp = QLineEdit()
         self.totp.setEchoMode(QLineEdit.EchoMode.Password)
-        self.stop_cisco = QCheckBox(t("setup.stop_cisco"))
-        self.stop_cisco.setChecked(existing.get("stop_cisco_during_run", True))
-        self.stop_mullvad = QCheckBox(t("setup.stop_mullvad"))
-        self.stop_mullvad.setChecked(existing.get("stop_mullvad_during_run", True))
+        self.totp.setPlaceholderText(t("setup.totp_ph"))
+
+        from ._windows import DEFAULT_CONFLICTING_SERVICES
+        services = (existing.get("conflicting_services")
+                    or list(DEFAULT_CONFLICTING_SERVICES))
+        self.stop_conflicting = QCheckBox(t("setup.stop_conflicting"))
+        self.stop_conflicting.setChecked(
+            existing.get("stop_conflicting_services", True))
+        self.services = QLineEdit(", ".join(services))
 
         form.addRow(t("setup.email"), self.email)
         form.addRow(t("setup.server"), self.server)
         form.addRow("openconnect.exe", self.oc)
         form.addRow("openconnect-sso", self.sso)
-        self.pw.setPlaceholderText(t("setup.pw_ph"))
-        self.totp.setPlaceholderText(t("setup.totp_ph"))
-        form.addRow(t("setup.password"), self.pw)
-        form.addRow(t("setup.totp"), self.totp)
+        # password + TOTP each with a Show/Hide (eye) toggle
+        form.addRow(t("setup.password"),
+                    _field_with_button(self.pw, _reveal_toggle(self.pw)))
+        form.addRow(t("setup.totp"),
+                    _field_with_button(self.totp, _reveal_toggle(self.totp)))
 
         totp_help = QHBoxLayout()
         qr_btn = QPushButton(t("setup.load_qr"))
@@ -231,8 +318,8 @@ class SetupView(QWidget):
         totp_help.addWidget(help_btn)
         form.addRow("", _wrap(totp_help))
 
-        form.addRow(self.stop_cisco)
-        form.addRow(self.stop_mullvad)
+        form.addRow(self.stop_conflicting)
+        form.addRow(t("setup.services"), self.services)
 
         check_btn = QPushButton(t("btn.check_prereqs"))
         check_btn.setObjectName("ghost")
@@ -288,8 +375,8 @@ class SetupView(QWidget):
             email=fields["email"], server=fields["server"],
             openconnect_path=fields["openconnect_path"],
             openconnect_sso_path=fields["openconnect_sso_path"],
-            stop_cisco=self.stop_cisco.isChecked(),
-            stop_mullvad=self.stop_mullvad.isChecked())
+            stop_conflicting=self.stop_conflicting.isChecked(),
+            conflicting_services=gl.parse_services(self.services.text()))
         path = cfgmod.save_config(data)
 
         try:
@@ -348,15 +435,18 @@ class ControlView(QWidget):
         self.log_btn.setObjectName("ghost")
         self.check_btn = QPushButton(t("btn.check_prereqs"))
         self.check_btn.setObjectName("ghost")
+        self.config_btn = QPushButton(t("btn.view_config"))
+        self.config_btn.setObjectName("ghost")
         self.settings_btn = QPushButton(t("btn.reconfigure"))
         self.settings_btn.setObjectName("ghost")
         self.connect_btn.clicked.connect(self._connect)
         self.disconnect_btn.clicked.connect(self._disconnect)
         self.log_btn.clicked.connect(self._show_log)
         self.check_btn.clicked.connect(self._check_prereqs)
+        self.config_btn.clicked.connect(self._show_config)
         self.settings_btn.clicked.connect(lambda: self._on_settings())
         for w in (self.connect_btn, self.disconnect_btn, self.log_btn,
-                  self.check_btn, self.settings_btn):
+                  self.check_btn, self.config_btn, self.settings_btn):
             root.addWidget(w)
 
         self._timer = QTimer(self)
@@ -370,6 +460,9 @@ class ControlView(QWidget):
                               av.get("openconnect_path", ""),
                               av.get("openconnect_sso_path", ""),
                               on_setup=self._on_settings)
+
+    def _show_config(self):
+        ConfigDialog(self).exec()
 
     def _set_dot(self, color: str) -> None:
         self.dot.setStyleSheet(f"background-color: {color};")

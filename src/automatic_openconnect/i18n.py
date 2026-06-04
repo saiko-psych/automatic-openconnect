@@ -54,6 +54,12 @@ _STRINGS: dict[str, dict[str, str]] = {
                          "de": "Cisco Secure Client während Verbindung stoppen"},
     "setup.stop_mullvad": {"en": "Stop Mullvad while connected",
                            "de": "Mullvad während Verbindung stoppen"},
+    "setup.stop_conflicting": {
+        "en": "Stop conflicting VPN services while connecting",
+        "de": "Konkurrierende VPN-Dienste beim Verbinden stoppen"},
+    "setup.services": {
+        "en": "Services to stop (comma-separated Windows service names)",
+        "de": "Zu stoppende Dienste (kommagetrennte Windows-Dienstnamen)"},
     "setup.load_qr": {"en": "Load QR-code image…",
                       "de": "QR-Code-Bild laden…"},
     "setup.totp_help_btn": {"en": "How do I get the seed?",
@@ -214,6 +220,15 @@ _STRINGS: dict[str, dict[str, str]] = {
     "close.cancel": {"en": "Cancel", "de": "Abbrechen"},
     "close.dont_ask": {"en": "Don't show this again",
                        "de": "Diese Abfrage nicht mehr anzeigen"},
+    # show/hide secrets + config viewer
+    "btn.show": {"en": "Show", "de": "Anzeigen"},
+    "btn.hide": {"en": "Hide", "de": "Verbergen"},
+    "btn.view_config": {"en": "View configuration",
+                        "de": "Konfiguration anzeigen"},
+    "cfg.title": {"en": "Current configuration", "de": "Aktuelle Konfiguration"},
+    "cfg.none": {"en": "(not set)", "de": "(nicht gesetzt)"},
+    "cfg.password": {"en": "Password (keyring)", "de": "Passwort (Keyring)"},
+    "cfg.totp": {"en": "TOTP seed (keyring)", "de": "TOTP-Seed (Keyring)"},
     # generic
     "generic.error": {"en": "Error", "de": "Fehler"},
     "lang.label": {"en": "Language", "de": "Sprache"},

@@ -55,14 +55,29 @@ class TestBuildAutoVpnConfig(unittest.TestCase):
         cfg = gl.build_auto_vpn_config(
             email="x@uni-graz.at", server="univpn.uni-graz.at",
             openconnect_path=r"C:\a", openconnect_sso_path=r"C:\b",
-            stop_cisco=True, stop_mullvad=False)
+            stop_conflicting=True, conflicting_services=["csc_vpnagent"])
         av = cfg["auto_vpn"]
         self.assertTrue(av["enabled"])
         self.assertEqual(av["user_email"], "x@uni-graz.at")
         self.assertEqual(av["server"], "univpn.uni-graz.at")
-        self.assertTrue(av["stop_cisco_during_run"])
-        self.assertFalse(av["stop_mullvad_during_run"])
+        self.assertTrue(av["stop_conflicting_services"])
+        self.assertEqual(av["conflicting_services"], ["csc_vpnagent"])
         self.assertTrue(av["down_on_exit"])
+
+    def test_default_services_when_omitted(self):
+        cfg = gl.build_auto_vpn_config(
+            email="x", server="s", openconnect_path="a",
+            openconnect_sso_path="b")
+        self.assertIn("csc_vpnagent", cfg["auto_vpn"]["conflicting_services"])
+
+
+class TestParseServices(unittest.TestCase):
+    def test_comma_and_space(self):
+        self.assertEqual(gl.parse_services("csc_vpnagent, MullvadVPN  Foo"),
+                         ["csc_vpnagent", "MullvadVPN", "Foo"])
+
+    def test_empty(self):
+        self.assertEqual(gl.parse_services("  "), [])
 
 
 class TestConnectStepLabel(unittest.TestCase):

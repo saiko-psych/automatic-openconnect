@@ -13,7 +13,9 @@ guarded so the rest of the app works without it.
 
 from __future__ import annotations
 
-from urllib.parse import parse_qs, urlparse
+import base64
+import re
+from urllib.parse import parse_qs, unquote, urlparse
 
 
 class QRUnavailable(RuntimeError):
@@ -21,19 +23,100 @@ class QRUnavailable(RuntimeError):
 
 
 def extract_secret_from_otpauth(text: str) -> str:
-    """Return the base32 secret from an otpauth:// URI, else ''.
+    """Return the base32 TOTP secret encoded in a QR's text, or ''.
 
-    Tolerates a bare base32 secret too (some exports embed only the key).
+    Handles three shapes:
+    - ``otpauth://totp/...?secret=BASE32`` (single account)
+    - ``otpauth-migration://offline?data=...`` (Google Authenticator
+      "export/transfer accounts" QR — base64 protobuf; the secret is raw
+      bytes that we base32-encode)
+    - a bare base32 string (some exports embed only the key)
     """
     text = (text or "").strip()
-    if text.lower().startswith("otpauth://"):
+    low = text.lower()
+    if low.startswith("otpauth-migration://"):
+        return _extract_from_migration(text)
+    if low.startswith("otpauth://"):   # totp or hotp setup QR
         secret = parse_qs(urlparse(text).query).get("secret", [""])[0]
-        return secret.strip()
-    # A bare base32 string (A-Z, 2-7, optional padding) — accept as-is.
-    bare = text.replace(" ", "").upper()
-    if bare and all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567=" for c in bare):
+        return _norm_base32(secret)
+    bare = _norm_base32(text)
+    if bare and all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567" for c in bare):
         return bare
     return ""
+
+
+def _norm_base32(s: str) -> str:
+    """Normalise a base32 secret: drop spaces, uppercase, strip padding."""
+    return (s or "").replace(" ", "").strip().upper().rstrip("=")
+
+
+# --- Google Authenticator otpauth-migration parsing ---------------------
+# MigrationPayload { repeated OtpParameters otp_parameters = 1; ... }
+# OtpParameters { bytes secret = 1; string name = 2; string issuer = 3;
+#                 ... Type type = 6;  (2 == TOTP) }
+# Parsed by hand (no protobuf dependency).
+
+def _read_varint(buf: bytes, i: int):
+    shift = val = 0
+    while i < len(buf):
+        b = buf[i]
+        i += 1
+        val |= (b & 0x7F) << shift
+        if not b & 0x80:
+            return val, i
+        shift += 7
+    return val, i
+
+
+def _iter_fields(buf: bytes):
+    i, n = 0, len(buf)
+    while i < n:
+        tag, i = _read_varint(buf, i)
+        field, wire = tag >> 3, tag & 7
+        if wire == 0:
+            val, i = _read_varint(buf, i)
+            yield field, "varint", val
+        elif wire == 2:
+            ln, i = _read_varint(buf, i)
+            yield field, "bytes", buf[i:i + ln]
+            i += ln
+        elif wire == 5:
+            i += 4
+        elif wire == 1:
+            i += 8
+        else:
+            return
+
+
+def _extract_from_migration(uri: str) -> str:
+    # Search the whole URI (otpauth-migration has no netloc/path for
+    # urlparse to split cleanly); grab the raw data= value.
+    m = re.search(r"(?:[?&])data=([^&]*)", uri)
+    if not m:
+        return ""
+    data = unquote(m.group(1))          # NOT parse_qs (it mangles '+')
+    try:
+        raw = base64.b64decode(data + "=" * (-len(data) % 4))
+    except (ValueError, TypeError):
+        return ""
+    totp_secret = first_secret = b""
+    for field, wire, val in _iter_fields(raw):
+        if field == 1 and wire == "bytes":   # an OtpParameters message
+            secret = b""
+            otype = None
+            for f2, w2, v2 in _iter_fields(val):
+                if f2 == 1 and w2 == "bytes":
+                    secret = v2
+                elif f2 == 6 and w2 == "varint":
+                    otype = v2
+            if secret and not first_secret:
+                first_secret = secret
+            if secret and otype == 2 and not totp_secret:   # 2 == TOTP
+                totp_secret = secret
+    secret = totp_secret or first_secret
+    if not secret:
+        return ""
+    return base64.b32encode(secret).decode("ascii").rstrip("=")
 
 
 def decode_qr_image(path: str) -> str:
@@ -41,17 +124,49 @@ def decode_qr_image(path: str) -> str:
     none found). Raises QRUnavailable if OpenCV is not installed."""
     try:
         import cv2  # type: ignore
+        import numpy as np
     except ImportError as exc:
-        raise QRUnavailable(
-            "QR-Erkennung benötigt OpenCV. Installation:\n"
-            "  uv tool install --reinstall --with opencv-python-headless "
-            "--with PyQt6 --with \"setuptools<70\" automatic-openconnect"
-        ) from exc
-    img = cv2.imread(path)
+        raise QRUnavailable("OpenCV (cv2) is required for QR detection.") from exc
+
+    # Read via np.fromfile + imdecode: cv2.imread uses the ANSI file API and
+    # silently returns None for paths with non-ASCII characters (umlauts,
+    # synced folders). Reading the bytes ourselves avoids that.
+    img = None
+    try:
+        buf = np.fromfile(path, dtype=np.uint8)
+        if buf.size:
+            img = cv2.imdecode(buf, cv2.IMREAD_COLOR)
+    except (OSError, ValueError):
+        img = None
+    if img is None:
+        img = cv2.imread(path)  # last resort
     if img is None:
         return ""
-    data, _points, _qr = cv2.QRCodeDetector().detectAndDecode(img)
-    return data or ""
+
+    detector = cv2.QRCodeDetector()
+
+    def _try(im) -> str:
+        # cv2's basic detector is finicky; try single then multi.
+        text, _pts, _qr = detector.detectAndDecode(im)
+        if text:
+            return text
+        ok, texts, _pts, _qr = detector.detectAndDecodeMulti(im)
+        if ok and texts:
+            for txt in texts:
+                if txt:
+                    return txt
+        return ""
+
+    # Try the image as-is, then grayscale, then a 2x upscale of each —
+    # small/soft QR photos often only decode after scaling up.
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    big = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+    big_gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+    for candidate in (img, gray, big, big_gray):
+        text = _try(candidate)
+        if text:
+            return text
+    return ""
 
 
 def secret_from_qr_image(path: str) -> str:
