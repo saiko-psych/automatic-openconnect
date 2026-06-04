@@ -1,0 +1,10 @@
+# Force users through the structured templates above (no blank issues),
+# so bug reports always carry the context we need.
+blank_issues_enabled: false
+contact_links:
+  - name: "📖 Documentation & setup guide"
+    url: "https://github.com/saiko-psych/automatic-openconnect#readme"
+    about: "Read the README first — installation, prerequisites, and how the TOTP seed import works."
+  - name: "🔒 Security note"
+    url: "https://github.com/saiko-psych/automatic-openconnect#readme"
+    about: "Never share your password or TOTP seed in an issue. Only the rotating 6-digit code is safe."

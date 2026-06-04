@@ -1,0 +1,96 @@
+name: "🐞 Bug report"
+description: "Something went wrong connecting, disconnecting, or in the app itself."
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug!
+
+        > [!CAUTION]
+        > **Never paste your password or TOTP seed.** Logs and screenshots
+        > can contain secrets — redact them before posting. The 6-digit
+        > rotating code is harmless, the base32 *seed* is not.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the problem and what you expected instead.
+      placeholder: "I clicked Connect and the status stayed amber / showed an error …"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What did you do, step by step?
+      placeholder: |
+        1. Open the app
+        2. Click Connect
+        3. …
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: App version
+      description: "From the GitHub release, or `automatic-vpn-console --version` if available."
+      placeholder: "v0.1.1"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: How did you install it?
+      options:
+        - "Standalone .exe (from a GitHub release)"
+        - "uv tool install (from source / git)"
+        - "Other / not sure"
+    validations:
+      required: true
+
+  - type: input
+    id: windows-version
+    attributes:
+      label: Windows version
+      description: "Settings → System → About, or run `winver`."
+      placeholder: "Windows 11 Pro 24H2 (26200)"
+    validations:
+      required: false
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Connect log
+      description: >
+        Open the app → **Show log**, and paste the relevant part here.
+        Remember to redact any secrets first.
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: prereqs
+    attributes:
+      label: Prerequisites checklist
+      description: "Open the app → **Check prerequisites** and confirm."
+      options:
+        - label: "openconnect.exe was found"
+        - label: "openconnect-sso was found"
+        - label: "Credentials (password + TOTP seed) are stored"
+        - label: "I ran the setup once (the admin prompt was accepted)"
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirmation
+      options:
+        - label: "I removed all passwords and TOTP seeds from the text/screenshots above."
+          required: true
+        - label: "I searched existing issues and this isn't a duplicate."
+          required: true

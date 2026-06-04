@@ -24,7 +24,7 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout,
     QFrame, QHBoxLayout, QLabel, QLineEdit, QMenu, QMessageBox,
-    QPlainTextEdit, QPushButton, QStackedWidget, QSystemTrayIcon,
+    QPlainTextEdit, QPushButton, QScrollArea, QStackedWidget, QSystemTrayIcon,
     QVBoxLayout, QWidget,
 )
 
@@ -36,6 +36,7 @@ from . import preflight
 from . import qr
 from . import session
 from . import tasks_windows as tw
+from . import totp_hotkey
 from ._windows import is_vpn_up, connect_log_path
 from .secrets import (get_uni_login_password, get_uni_totp_secret,
                       set_uni_login_password, set_uni_totp_secret)
@@ -45,6 +46,11 @@ from .secrets import (get_uni_login_password, get_uni_totp_secret,
 # tunnel + orphaned-adapter cleanup can take ~60 s), so the GUI doesn't
 # give up while the connection is actually still succeeding. ~70 s.
 _CONNECT_TIMEOUT_TICKS = 35
+
+# Where the in-app "Report a bug" button sends the user. The chooser lets
+# them pick the bug-report vs feature-request issue template.
+_ISSUE_URL = ("https://github.com/saiko-psych/automatic-openconnect"
+              "/issues/new/choose")
 
 # Status-dot colours per state.
 _DOT_GREEN = "#3ba55d"   # connected
@@ -86,28 +92,32 @@ def _wrap(layout) -> QWidget:
     return w
 
 
-def _reveal_toggle(line_edit: QLineEdit) -> QPushButton:
-    """A small Show/Hide button that reveals a masked field (the 'eye')."""
-    btn = QPushButton(t("btn.show"))
-    btn.setObjectName("ghost")
-    btn.setCheckable(True)
-    btn.setMaximumWidth(110)
+def _png_icon(name: str) -> QIcon:
+    """Load a bundled PNG asset as a QIcon."""
+    try:
+        p = _ir.files("automatic_openconnect") / "assets" / f"{name}.png"
+        return QIcon(str(p))
+    except Exception:
+        return QIcon()
 
-    def _toggle(checked: bool) -> None:
-        line_edit.setEchoMode(QLineEdit.EchoMode.Normal if checked
+
+def _add_reveal_eye(line_edit: QLineEdit) -> None:
+    """Mask the field and add an eye icon *inside* it (trailing action)
+    that toggles between hidden and revealed."""
+    line_edit.setEchoMode(QLineEdit.EchoMode.Password)
+    act = line_edit.addAction(_png_icon("eye"),
+                              QLineEdit.ActionPosition.TrailingPosition)
+    act.setToolTip(t("btn.show"))
+    shown = {"on": False}
+
+    def _toggle() -> None:
+        shown["on"] = not shown["on"]
+        line_edit.setEchoMode(QLineEdit.EchoMode.Normal if shown["on"]
                               else QLineEdit.EchoMode.Password)
-        btn.setText(t("btn.hide") if checked else t("btn.show"))
+        act.setIcon(_png_icon("eye-off" if shown["on"] else "eye"))
+        act.setToolTip(t("btn.hide") if shown["on"] else t("btn.show"))
 
-    btn.toggled.connect(_toggle)
-    return btn
-
-
-def _field_with_button(line_edit: QLineEdit, button: QPushButton) -> QWidget:
-    row = QHBoxLayout()
-    row.setContentsMargins(0, 0, 0, 0)
-    row.addWidget(line_edit)
-    row.addWidget(button)
-    return _wrap(row)
+    act.triggered.connect(_toggle)
 
 
 _FIX_LABELS = {
@@ -226,68 +236,56 @@ def show_preflight_dialog(parent, email: str, oc_path: str, sso_path: str,
     PreflightDialog(parent, email, oc_path, sso_path, on_setup).exec()
 
 
-class ConfigDialog(QDialog):
-    """Read-only view of the current configuration plus the stored
-    credentials. Password and TOTP seed are masked, revealable with the
-    Show/Hide (eye) button."""
-
-    def __init__(self, parent):
-        super().__init__(parent)
-        self.setWindowTitle(t("cfg.title"))
-        self.resize(640, 440)
-        form = QFormLayout(self)
-        av = (cfgmod.load_config().get("auto_vpn") or {})
-
-        def ro(text: str) -> QLineEdit:
-            le = QLineEdit(str(text))
-            le.setReadOnly(True)
-            return le
-
-        form.addRow(t("setup.email"), ro(av.get("user_email", "")))
-        form.addRow(t("setup.server"), ro(av.get("server", "")))
-        form.addRow("openconnect.exe", ro(av.get("openconnect_path", "")))
-        form.addRow("openconnect-sso", ro(av.get("openconnect_sso_path", "")))
-        from ._windows import _configured_service_targets
-        form.addRow(t("setup.services"),
-                    ro(", ".join(_configured_service_targets(av))))
-
-        email = av.get("user_email", "")
-        try:
-            pw = (get_uni_login_password(email) or "") if email else ""
-            seed = (get_uni_totp_secret(email) or "") if email else ""
-        except Exception:
-            pw = seed = ""
-        form.addRow(t("cfg.password"), self._secret_row(pw))
-        form.addRow(t("cfg.totp"), self._secret_row(seed))
-
-    def _secret_row(self, value: str) -> QWidget:
-        le = QLineEdit()
-        le.setReadOnly(True)
-        if value:
-            le.setText(value)
-            le.setEchoMode(QLineEdit.EchoMode.Password)
-            return _field_with_button(le, _reveal_toggle(le))
-        le.setText(t("cfg.none"))
-        return le
-
-
 class SetupView(QWidget):
-    def __init__(self, on_done):
+    def __init__(self, on_done, on_cancel=None):
         super().__init__()
         self._on_done = on_done
-        form = QFormLayout(self)
+        self._on_cancel = on_cancel
+        # Already set up? Then this view acts as a config editor: it offers a
+        # Back button and saves without re-registering (no second UAC prompt).
+        self._configured = (cfgmod.is_configured(cfgmod.load_config())
+                            and tw.is_registered())
+
+        # Scroll the form so nothing ever clips on a short window.
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        outer.addWidget(scroll)
+        body = QWidget()
+        scroll.setWidget(body)
+        form = QFormLayout(body)
+        form.setContentsMargins(28, 22, 28, 22)
+        form.setHorizontalSpacing(16)
+        form.setVerticalSpacing(12)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight
+                               | Qt.AlignmentFlag.AlignVCenter)
+        form.setFieldGrowthPolicy(
+            QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
         existing = (cfgmod.load_config().get("auto_vpn") or {})
         self.email = QLineEdit(existing.get("user_email", ""))
         self.server = QLineEdit(existing.get("server", "univpn.uni-graz.at"))
         self.oc = QLineEdit(existing.get("openconnect_path") or gl.detect_openconnect())
         self.sso = QLineEdit(existing.get("openconnect_sso_path") or gl.detect_openconnect_sso())
-        self.pw = QLineEdit()
-        self.pw.setEchoMode(QLineEdit.EchoMode.Password)
+
+        # The setup form doubles as the config view: prefill the currently
+        # stored credentials (masked) so they can be revealed via the eye.
+        email = existing.get("user_email", "")
+        try:
+            cur_pw = (get_uni_login_password(email) or "") if email else ""
+            cur_seed = (get_uni_totp_secret(email) or "") if email else ""
+        except Exception:
+            cur_pw = cur_seed = ""
+        self.pw = QLineEdit(cur_pw)
         self.pw.setPlaceholderText(t("setup.pw_ph"))
-        self.totp = QLineEdit()
-        self.totp.setEchoMode(QLineEdit.EchoMode.Password)
+        _add_reveal_eye(self.pw)
+        self.totp = QLineEdit(cur_seed)
         self.totp.setPlaceholderText(t("setup.totp_ph"))
+        _add_reveal_eye(self.totp)
 
         from ._windows import DEFAULT_CONFLICTING_SERVICES
         services = (existing.get("conflicting_services")
@@ -296,18 +294,22 @@ class SetupView(QWidget):
         self.stop_conflicting.setChecked(
             existing.get("stop_conflicting_services", True))
         self.services = QLineEdit(", ".join(services))
+        self.services.setPlaceholderText(t("setup.services_ph"))
+
+        # Show the START of long values (paths/seed), not the scrolled end.
+        for le in (self.email, self.server, self.oc, self.sso,
+                   self.totp, self.services):
+            le.setCursorPosition(0)
 
         form.addRow(t("setup.email"), self.email)
         form.addRow(t("setup.server"), self.server)
         form.addRow("openconnect.exe", self.oc)
         form.addRow("openconnect-sso", self.sso)
-        # password + TOTP each with a Show/Hide (eye) toggle
-        form.addRow(t("setup.password"),
-                    _field_with_button(self.pw, _reveal_toggle(self.pw)))
-        form.addRow(t("setup.totp"),
-                    _field_with_button(self.totp, _reveal_toggle(self.totp)))
+        form.addRow(t("setup.password"), self.pw)
+        form.addRow(t("setup.totp"), self.totp)
 
         totp_help = QHBoxLayout()
+        totp_help.setContentsMargins(0, 0, 0, 0)
         qr_btn = QPushButton(t("setup.load_qr"))
         qr_btn.setObjectName("ghost")
         qr_btn.clicked.connect(self._load_qr)
@@ -316,7 +318,14 @@ class SetupView(QWidget):
         help_btn.clicked.connect(self._show_totp_help)
         totp_help.addWidget(qr_btn)
         totp_help.addWidget(help_btn)
+        totp_help.addStretch(1)
         form.addRow("", _wrap(totp_help))
+
+        ui = (cfgmod.load_config().get("ui") or {})
+        self.totp_hotkey_cb = QCheckBox(
+            t("setup.totp_hotkey").format(combo=totp_hotkey.DEFAULT_HOTKEY_LABEL))
+        self.totp_hotkey_cb.setChecked(ui.get("totp_hotkey", True))
+        form.addRow(self.totp_hotkey_cb)
 
         form.addRow(self.stop_conflicting)
         form.addRow(t("setup.services"), self.services)
@@ -326,10 +335,20 @@ class SetupView(QWidget):
         check_btn.clicked.connect(self._check_prereqs)
         form.addRow(check_btn)
 
-        btn = QPushButton(t("setup.submit"))
-        btn.setObjectName("primary")
-        btn.clicked.connect(self._submit)
-        form.addRow(btn)
+        buttons = QHBoxLayout()
+        buttons.setContentsMargins(0, 0, 0, 0)
+        buttons.setSpacing(10)
+        if self._on_cancel is not None and self._configured:
+            back_btn = QPushButton(t("btn.back"))
+            back_btn.setObjectName("ghost")
+            back_btn.clicked.connect(lambda: self._on_cancel())
+            buttons.addWidget(back_btn)
+        submit = QPushButton(t("setup.save") if self._configured
+                             else t("setup.submit"))
+        submit.setObjectName("primary")
+        submit.clicked.connect(self._submit)
+        buttons.addWidget(submit, 1)
+        form.addRow(_wrap(buttons))
 
     def _check_prereqs(self):
         show_preflight_dialog(self, self.email.text(),
@@ -371,20 +390,29 @@ class SetupView(QWidget):
                                 "\n".join(t(e) for e in errors))
             return
 
-        data = gl.build_auto_vpn_config(
+        # Merge into the existing config so we never clobber the ui block
+        # (language, close-on-exit preference) when reconfiguring.
+        data = cfgmod.load_config()
+        data["auto_vpn"] = gl.build_auto_vpn_config(
             email=fields["email"], server=fields["server"],
             openconnect_path=fields["openconnect_path"],
             openconnect_sso_path=fields["openconnect_sso_path"],
             stop_conflicting=self.stop_conflicting.isChecked(),
-            conflicting_services=gl.parse_services(self.services.text()))
+            conflicting_services=gl.parse_services(self.services.text()))["auto_vpn"]
+        data.setdefault("ui", {})["totp_hotkey"] = self.totp_hotkey_cb.isChecked()
         path = cfgmod.save_config(data)
 
-        try:
-            tw.register(sys.executable, str(path),
-                        frozen=getattr(sys, "frozen", False))
-        except Exception as exc:  # VPNError or subprocess failure
-            QMessageBox.critical(self, t("setup.failed"), str(exc))
-            return
+        # Register the elevated tasks only the first time (the one UAC prompt).
+        # When already set up this view is just a config editor, so saving
+        # must NOT trigger another admin prompt.
+        already_registered = tw.is_registered()
+        if not already_registered:
+            try:
+                tw.register(sys.executable, str(path),
+                            frozen=getattr(sys, "frozen", False))
+            except Exception as exc:  # VPNError or subprocess failure
+                QMessageBox.critical(self, t("setup.failed"), str(exc))
+                return
 
         # Commit credentials only once the elevated task actually exists.
         if self.pw.text():
@@ -392,7 +420,9 @@ class SetupView(QWidget):
         if self.totp.text():
             set_uni_totp_secret(fields["email"], self.totp.text().replace(" ", ""))
 
-        QMessageBox.information(self, t("setup.done_title"), t("setup.done_msg"))
+        QMessageBox.information(
+            self, t("setup.done_title"),
+            t("setup.saved_msg") if already_registered else t("setup.done_msg"))
         self._on_done()
 
 
@@ -435,18 +465,19 @@ class ControlView(QWidget):
         self.log_btn.setObjectName("ghost")
         self.check_btn = QPushButton(t("btn.check_prereqs"))
         self.check_btn.setObjectName("ghost")
-        self.config_btn = QPushButton(t("btn.view_config"))
-        self.config_btn.setObjectName("ghost")
         self.settings_btn = QPushButton(t("btn.reconfigure"))
         self.settings_btn.setObjectName("ghost")
+        self.bug_btn = QPushButton(t("btn.report_bug"))
+        self.bug_btn.setObjectName("ghost")
+        self.bug_btn.setIcon(_png_icon("bug"))
         self.connect_btn.clicked.connect(self._connect)
         self.disconnect_btn.clicked.connect(self._disconnect)
         self.log_btn.clicked.connect(self._show_log)
         self.check_btn.clicked.connect(self._check_prereqs)
-        self.config_btn.clicked.connect(self._show_config)
         self.settings_btn.clicked.connect(lambda: self._on_settings())
+        self.bug_btn.clicked.connect(self._report_bug)
         for w in (self.connect_btn, self.disconnect_btn, self.log_btn,
-                  self.check_btn, self.config_btn, self.settings_btn):
+                  self.check_btn, self.settings_btn, self.bug_btn):
             root.addWidget(w)
 
         self._timer = QTimer(self)
@@ -461,8 +492,8 @@ class ControlView(QWidget):
                               av.get("openconnect_sso_path", ""),
                               on_setup=self._on_settings)
 
-    def _show_config(self):
-        ConfigDialog(self).exec()
+    def _report_bug(self):
+        webbrowser.open(_ISSUE_URL)
 
     def _set_dot(self, color: str) -> None:
         self.dot.setStyleSheet(f"background-color: {color};")
@@ -606,12 +637,19 @@ class MainWindow(QWidget):
 
         self.stack = QStackedWidget()
         outer.addWidget(self.stack)
-        self.setup = SetupView(on_done=self._show_control)
+        self.setup = SetupView(on_done=self._show_control,
+                               on_cancel=self._show_control)
         self.control = ControlView(on_settings=self._show_setup)
         self.stack.addWidget(self.setup)
         self.stack.addWidget(self.control)
         self._build_tray()
         self.control.on_state = self._update_tray
+
+        # Global TOTP hotkey: types the current 6-digit code into the
+        # focused field. Seed is pulled lazily from the keyring on each press.
+        self._hotkey = totp_hotkey.TotpHotkey(self._current_totp_seed)
+        self._apply_totp_hotkey()
+
         self._route()
         # Guided first setup: if we're on the setup screen and something is
         # missing, proactively open the checklist (with one-click fixes) so
@@ -678,6 +716,7 @@ class MainWindow(QWidget):
 
     def _quit(self):
         if self._perform_exit_teardown():
+            self._hotkey.stop()
             if self.tray is not None:
                 self.tray.hide()
             QApplication.instance().quit()
@@ -706,7 +745,8 @@ class MainWindow(QWidget):
         self.stack.removeWidget(self.control)
         self.setup.deleteLater()
         self.control.deleteLater()
-        self.setup = SetupView(on_done=self._show_control)
+        self.setup = SetupView(on_done=self._show_control,
+                               on_cancel=self._show_control)
         self.control = ControlView(on_settings=self._show_setup)
         self.control.on_state = self._update_tray
         self.stack.addWidget(self.setup)
@@ -738,11 +778,46 @@ class MainWindow(QWidget):
                                   on_setup=self._show_setup)
 
     def _show_control(self):
+        # Returning from setup may have toggled the hotkey preference.
+        self._apply_totp_hotkey()
         self.control.refresh()
         self.stack.setCurrentWidget(self.control)
 
+    def _swap_setup(self):
+        """Replace the setup view with a fresh instance so it reflects the
+        current saved config and shows the Back button when appropriate."""
+        idx = self.stack.indexOf(self.setup)
+        new = SetupView(on_done=self._show_control,
+                        on_cancel=self._show_control)
+        self.stack.insertWidget(idx, new)
+        self.stack.removeWidget(self.setup)
+        self.setup.deleteLater()
+        self.setup = new
+
     def _show_setup(self):
+        self._swap_setup()
         self.stack.setCurrentWidget(self.setup)
+
+    # --- TOTP hotkey ----------------------------------------------------
+
+    def _current_totp_seed(self) -> str:
+        """Fetch the stored TOTP seed for the configured email (or '')."""
+        av = (cfgmod.load_config().get("auto_vpn") or {})
+        email = av.get("user_email", "")
+        if not email:
+            return ""
+        try:
+            return get_uni_totp_secret(email) or ""
+        except Exception:
+            return ""
+
+    def _apply_totp_hotkey(self) -> None:
+        """Start or stop the global TOTP hotkey per the saved preference."""
+        enabled = (cfgmod.load_config().get("ui") or {}).get("totp_hotkey", True)
+        if enabled:
+            self._hotkey.start()
+        else:
+            self._hotkey.stop()
 
     # --- close behaviour ------------------------------------------------
 
