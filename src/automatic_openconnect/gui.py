@@ -16,16 +16,17 @@ from __future__ import annotations
 import sys
 
 import importlib.resources as _ir
+import os
 import time
 import webbrowser
 
 from PyQt6.QtCore import Qt, QProcess, QTimer
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout,
-    QFrame, QHBoxLayout, QLabel, QLineEdit, QMenu, QMessageBox,
-    QPlainTextEdit, QPushButton, QScrollArea, QStackedWidget, QSystemTrayIcon,
-    QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QColorDialog, QComboBox, QDialog, QFileDialog,
+    QFormLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMenu,
+    QMessageBox, QPlainTextEdit, QPushButton, QScrollArea, QStackedWidget,
+    QSystemTrayIcon, QVBoxLayout, QWidget,
 )
 
 from . import config as cfgmod
@@ -34,6 +35,7 @@ from . import i18n
 from .i18n import t
 from . import preflight
 from . import qr
+from . import autostart
 from . import session
 from . import tasks_windows as tw
 from . import totp_hotkey
@@ -47,43 +49,127 @@ from .secrets import (get_uni_login_password, get_uni_totp_secret,
 # give up while the connection is actually still succeeding. ~70 s.
 _CONNECT_TIMEOUT_TICKS = 35
 
+_REPO_URL = "https://github.com/saiko-psych/automatic-openconnect"
 # Where the in-app "Report a bug" button sends the user. The chooser lets
 # them pick the bug-report vs feature-request issue template.
-_ISSUE_URL = ("https://github.com/saiko-psych/automatic-openconnect"
-              "/issues/new/choose")
+_ISSUE_URL = _REPO_URL + "/issues/new/choose"
 
-# Status-dot colours per state.
-_DOT_GREEN = "#3ba55d"   # connected
-_DOT_AMBER = "#e0a23c"   # connecting
-_DOT_RED = "#e04f4f"     # failed
-_DOT_GREY = "#6b6e73"    # disconnected
+# Per-state colours for the status dot AND the tray icon. User-overridable
+# in Settings (ui.state_colors); these are the defaults.
+_DEFAULT_STATE_COLORS = {
+    "connected": "#3ba55d",     # green
+    "connecting": "#e0a23c",    # amber
+    "disconnected": "#3b82f6",  # blue
+    "error": "#e04f4f",         # red
+}
 
-_STYLESHEET = """
-QWidget { background-color: #1e1f22; color: #e6e6e6;
+
+def _state_color(state: str) -> str:
+    override = (cfgmod.load_config().get("ui") or {}).get("state_colors") or {}
+    return override.get(state) or _DEFAULT_STATE_COLORS.get(state, "#6b6e73")
+
+# Accent presets: (base, hover). Picked in Settings; recolours the primary
+# button, focus ring AND the action icons. Status-dot colours stay semantic.
+_ACCENTS = {
+    "blue":   ("#3b82f6", "#2f6fe0"),
+    "green":  ("#3ba55d", "#2f8b4d"),
+    "purple": ("#8b5cf6", "#7a4ee0"),
+    "orange": ("#e0822f", "#c86f22"),
+    "teal":   ("#14b8a6", "#0fa192"),
+    "pink":   ("#ec4899", "#d63a86"),
+}
+DEFAULT_ACCENT = "blue"
+
+# Light / dark palettes. Every colour the stylesheet needs comes from here so
+# a theme is just a swap of this dict.
+_PALETTES = {
+    "dark": {
+        "BG": "#1e1f22", "FG": "#e6e6e6", "SUB": "#9a9da3", "HEADER": "#ffffff",
+        "PANEL": "#2b2d31", "BORDER": "#3a3d42", "HOVER": "#34373c",
+        "DISFG": "#6b6e73", "DISBG": "#232427", "INDBORDER": "#5a5d63",
+        "POPUPSEL": "#3a3d42", "LOGBG": "#141517",
+    },
+    "light": {
+        "BG": "#f4f5f7", "FG": "#1c1d20", "SUB": "#5c5f66", "HEADER": "#101114",
+        "PANEL": "#ffffff", "BORDER": "#cdd0d6", "HOVER": "#e8eaed",
+        "DISFG": "#a3a6ac", "DISBG": "#e9eaec", "INDBORDER": "#aab0b8",
+        "POPUPSEL": "#dfe2e7", "LOGBG": "#ffffff",
+    },
+}
+DEFAULT_THEME = "dark"
+
+# Current accent — used to tint action icons (the stylesheet handles the rest).
+_CURRENT_ACCENT = DEFAULT_ACCENT
+
+_STYLESHEET_TMPL = """
+QWidget { background-color: @BG@; color: @FG@;
           font-family: 'Segoe UI', sans-serif; font-size: 13px; }
-QLabel#header { font-size: 22px; font-weight: 600; color: #ffffff; }
-QLabel#subheader { color: #9a9da3; font-size: 12px; }
+QLabel#header { font-size: 22px; font-weight: 600; color: @HEADER@; }
+QLabel#subheader { color: @SUB@; font-size: 12px; }
+QLabel#sectionTitle { color: @HEADER@; font-weight: 600; font-size: 14px; }
 QLabel#statusText { font-size: 16px; }
 QLabel#dot { border-radius: 8px; min-width: 16px; max-width: 16px;
              min-height: 16px; max-height: 16px; }
-QPushButton { background-color: #2b2d31; border: 1px solid #3a3d42;
+QPushButton { background-color: @PANEL@; border: 1px solid @BORDER@;
               border-radius: 8px; padding: 11px 16px; }
-QPushButton:hover { background-color: #34373c; }
-QPushButton:disabled { color: #6b6e73; background-color: #232427;
-                       border-color: #2c2e33; }
-QPushButton#primary { background-color: #3b82f6; border: none;
+QPushButton:hover { background-color: @HOVER@; }
+QPushButton:disabled { color: @DISFG@; background-color: @DISBG@;
+                       border-color: @BORDER@; }
+QPushButton#primary { background-color: @ACCENT@; border: none;
                       color: #ffffff; font-weight: 600; font-size: 15px; }
-QPushButton#primary:hover { background-color: #2f6fe0; }
-QPushButton#primary:disabled { background-color: #2a3a55; color: #8aa0c0; }
-QPushButton#ghost { background-color: transparent; color: #b8bbc0; }
-QPushButton#ghost:hover { background-color: #2b2d31; }
-QLineEdit { background-color: #2b2d31; border: 1px solid #3a3d42;
-            border-radius: 6px; padding: 7px; }
-QLineEdit:focus { border-color: #3b82f6; }
-QPlainTextEdit { background-color: #141517; border: 1px solid #3a3d42;
-                 font-family: 'Cascadia Mono', Consolas, monospace; }
+QPushButton#primary:hover { background-color: @ACCENT_HOVER@; }
+QPushButton#primary:disabled { background-color: @DISBG@; color: @DISFG@; }
+QPushButton#ghost { background-color: transparent; color: @FG@; }
+QPushButton#ghost:hover { background-color: @HOVER@; }
+QLineEdit { background-color: @PANEL@; border: 1px solid @BORDER@;
+            border-radius: 6px; padding: 7px; selection-background-color: @ACCENT@; }
+QLineEdit:focus { border-color: @ACCENT@; }
+QComboBox { background-color: @PANEL@; border: 1px solid @BORDER@;
+            border-radius: 6px; padding: 5px 10px; }
+QComboBox:focus { border-color: @ACCENT@; }
+QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: center right;
+                       width: 24px; border: none; }
+QComboBox::down-arrow { image: url("@CHEVRON@"); width: 14px; height: 14px; }
+QComboBox QAbstractItemView { background-color: @PANEL@; color: @FG@;
+                              border: 1px solid @BORDER@;
+                              selection-background-color: @POPUPSEL@; outline: none; }
 QCheckBox { spacing: 8px; }
+QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid @INDBORDER@;
+                       border-radius: 4px; background: @PANEL@; }
+QCheckBox::indicator:hover { border-color: @ACCENT@; }
+QCheckBox::indicator:checked { background: @ACCENT@; border-color: @ACCENT@;
+                               image: url("@CHECK@"); }
+QPlainTextEdit { background-color: @LOGBG@; color: @FG@; border: 1px solid @BORDER@;
+                 font-family: 'Cascadia Mono', Consolas, monospace; }
+QScrollBar:vertical { background: transparent; width: 10px; margin: 0; }
+QScrollBar::handle:vertical { background: @BORDER@; border-radius: 5px; min-height: 28px; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
+QToolTip { background-color: @PANEL@; color: @FG@; border: 1px solid @BORDER@; }
 """
+
+
+def _asset_url(name: str) -> str:
+    """Forward-slash absolute path to a bundled PNG, for QSS url()."""
+    try:
+        return str(_ir.files("automatic_openconnect") / "assets"
+                   / f"{name}.png").replace("\\", "/")
+    except Exception:
+        return ""
+
+
+def _build_stylesheet(accent: str = DEFAULT_ACCENT,
+                      theme: str = DEFAULT_THEME) -> str:
+    pal = _PALETTES.get(theme, _PALETTES[DEFAULT_THEME])
+    base, hover = _ACCENTS.get(accent, _ACCENTS[DEFAULT_ACCENT])
+    s = _STYLESHEET_TMPL
+    for key, value in pal.items():
+        s = s.replace(f"@{key}@", value)
+    s = s.replace("@ACCENT_HOVER@", hover).replace("@ACCENT@", base)
+    s = s.replace("@CHEVRON@", _asset_url("chevron"))
+    s = s.replace("@CHECK@", _asset_url("check"))
+    return s
+
 
 def _wrap(layout) -> QWidget:
     """Wrap a layout in a QWidget (for QFormLayout.addRow)."""
@@ -93,10 +179,33 @@ def _wrap(layout) -> QWidget:
 
 
 def _png_icon(name: str) -> QIcon:
-    """Load a bundled PNG asset as a QIcon."""
+    """Load a bundled PNG asset as a QIcon (untinted)."""
     try:
         p = _ir.files("automatic_openconnect") / "assets" / f"{name}.png"
         return QIcon(str(p))
+    except Exception:
+        return QIcon()
+
+
+def _accent_icon(name: str) -> QIcon:
+    """Bundled monochrome PNG recoloured to the current accent, so the action
+    icons match the theme (and stay visible in both light and dark mode)."""
+    from PyQt6.QtGui import QColor, QPainter, QPixmap
+    base = _ACCENTS.get(_CURRENT_ACCENT, _ACCENTS[DEFAULT_ACCENT])[0]
+    try:
+        p = _ir.files("automatic_openconnect") / "assets" / f"{name}.png"
+        pix = QPixmap(str(p))
+        if pix.isNull():
+            return QIcon()
+        out = QPixmap(pix.size())
+        out.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(out)
+        painter.drawPixmap(0, 0, pix)
+        painter.setCompositionMode(
+            QPainter.CompositionMode.CompositionMode_SourceIn)
+        painter.fillRect(out.rect(), QColor(base))
+        painter.end()
+        return QIcon(out)
     except Exception:
         return QIcon()
 
@@ -105,7 +214,7 @@ def _add_reveal_eye(line_edit: QLineEdit) -> None:
     """Mask the field and add an eye icon *inside* it (trailing action)
     that toggles between hidden and revealed."""
     line_edit.setEchoMode(QLineEdit.EchoMode.Password)
-    act = line_edit.addAction(_png_icon("eye"),
+    act = line_edit.addAction(_accent_icon("eye"),
                               QLineEdit.ActionPosition.TrailingPosition)
     act.setToolTip(t("btn.show"))
     shown = {"on": False}
@@ -114,7 +223,7 @@ def _add_reveal_eye(line_edit: QLineEdit) -> None:
         shown["on"] = not shown["on"]
         line_edit.setEchoMode(QLineEdit.EchoMode.Normal if shown["on"]
                               else QLineEdit.EchoMode.Password)
-        act.setIcon(_png_icon("eye-off" if shown["on"] else "eye"))
+        act.setIcon(_accent_icon("eye-off" if shown["on"] else "eye"))
         act.setToolTip(t("btn.hide") if shown["on"] else t("btn.show"))
 
     act.triggered.connect(_toggle)
@@ -427,9 +536,10 @@ class SetupView(QWidget):
 
 
 class ControlView(QWidget):
-    def __init__(self, on_settings):
+    def __init__(self, on_settings, on_app_settings):
         super().__init__()
-        self._on_settings = on_settings
+        self._on_settings = on_settings          # VPN configuration
+        self._on_app_settings = on_app_settings   # app settings
         self._connecting = 0   # >0 while a connect attempt is in flight
         self._failed = False
         self.on_state = None   # MainWindow sets this to update the tray icon
@@ -461,24 +571,36 @@ class ControlView(QWidget):
         self.connect_btn = QPushButton(t("btn.connect"))
         self.connect_btn.setObjectName("primary")
         self.disconnect_btn = QPushButton(t("btn.disconnect"))
-        self.log_btn = QPushButton(t("btn.show_log"))
-        self.log_btn.setObjectName("ghost")
-        self.check_btn = QPushButton(t("btn.check_prereqs"))
-        self.check_btn.setObjectName("ghost")
-        self.settings_btn = QPushButton(t("btn.reconfigure"))
-        self.settings_btn.setObjectName("ghost")
-        self.bug_btn = QPushButton(t("btn.report_bug"))
-        self.bug_btn.setObjectName("ghost")
-        self.bug_btn.setIcon(_png_icon("bug"))
         self.connect_btn.clicked.connect(self._connect)
         self.disconnect_btn.clicked.connect(self._disconnect)
+        root.addWidget(self.connect_btn)
+        root.addWidget(self.disconnect_btn)
+
+        # Secondary actions in a tidy 2-column grid.
+        self.log_btn = QPushButton(t("btn.show_log"))
+        self.check_btn = QPushButton(t("btn.check_prereqs"))
+        self.config_btn = QPushButton(t("btn.reconfigure"))
+        self.app_settings_btn = QPushButton(t("settings.title"))
+        self.app_settings_btn.setIcon(_accent_icon("gear"))
+        self.bug_btn = QPushButton(t("btn.report_bug"))
+        self.bug_btn.setIcon(_accent_icon("bug"))
+        for b in (self.log_btn, self.check_btn, self.config_btn,
+                  self.app_settings_btn, self.bug_btn):
+            b.setObjectName("ghost")
         self.log_btn.clicked.connect(self._show_log)
         self.check_btn.clicked.connect(self._check_prereqs)
-        self.settings_btn.clicked.connect(lambda: self._on_settings())
+        self.config_btn.clicked.connect(lambda: self._on_settings())
+        self.app_settings_btn.clicked.connect(lambda: self._on_app_settings())
         self.bug_btn.clicked.connect(self._report_bug)
-        for w in (self.connect_btn, self.disconnect_btn, self.log_btn,
-                  self.check_btn, self.settings_btn, self.bug_btn):
-            root.addWidget(w)
+
+        grid = QGridLayout()
+        grid.setSpacing(8)
+        grid.addWidget(self.log_btn, 0, 0)
+        grid.addWidget(self.check_btn, 0, 1)
+        grid.addWidget(self.config_btn, 1, 0)
+        grid.addWidget(self.app_settings_btn, 1, 1)
+        grid.addWidget(self.bug_btn, 2, 0, 1, 2)
+        root.addLayout(grid)
 
         self._timer = QTimer(self)
         self._timer.timeout.connect(self.refresh)
@@ -511,7 +633,7 @@ class ControlView(QWidget):
         if up:
             self._connecting = 0
             self._failed = False
-            self._set_dot(_DOT_GREEN)
+            self._set_dot(_state_color("connected"))
             self.status.setText(t("status.connected"))
         elif self._connecting > 0:
             self._connecting -= 1
@@ -519,19 +641,19 @@ class ControlView(QWidget):
             if step == "step.failed":
                 self._connecting = 0
                 self._failed = True
-                self._set_dot(_DOT_RED)
+                self._set_dot(_state_color("error"))
                 self.status.setText(t("status.failed_log"))
             elif self._connecting == 0:
                 self._failed = True
-                self._set_dot(_DOT_RED)
+                self._set_dot(_state_color("error"))
                 self.status.setText(t("status.timeout_log"))
             else:
-                self._set_dot(_DOT_AMBER)
+                self._set_dot(_state_color("connecting"))
                 self.status.setText(t(step))
         elif self._failed:
-            self._set_dot(_DOT_RED)
+            self._set_dot(_state_color("error"))
         else:
-            self._set_dot(_DOT_GREY)
+            self._set_dot(_state_color("disconnected"))
             self.status.setText(t("status.disconnected"))
         # Heartbeat: keep the watchdog's timestamp fresh while this GUI is
         # alive and owns a connection — including AFTER the display timeout
@@ -576,7 +698,7 @@ class ControlView(QWidget):
             tw.run(tw.TASK_UP)
             self._connecting = _CONNECT_TIMEOUT_TICKS
             self._failed = False
-            self._set_dot(_DOT_AMBER)
+            self._set_dot(_state_color("connecting"))
             self.status.setText(t("step.connecting"))
             self.connect_btn.setEnabled(False)
             self.disconnect_btn.setEnabled(True)
@@ -614,6 +736,246 @@ class ControlView(QWidget):
         dlg.exec()
 
 
+class SettingsView(QWidget):
+    """App-level settings, kept separate from the VPN *configuration*:
+    startup & tray behaviour, appearance, maintenance shortcuts, and the
+    legal/about block. Every change applies and persists immediately."""
+
+    def __init__(self, on_back, on_appearance_changed=None):
+        super().__init__()
+        self._on_back = on_back
+        self._on_appearance_changed = on_appearance_changed
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        outer.addWidget(scroll)
+        body = QWidget()
+        scroll.setWidget(body)
+        root = QVBoxLayout(body)
+        root.setContentsMargins(28, 22, 28, 22)
+        root.setSpacing(8)
+
+        header = QLabel(t("settings.title"))
+        header.setObjectName("header")
+        root.addWidget(header)
+
+        ui = (cfgmod.load_config().get("ui") or {})
+
+        # --- Startup & tray -------------------------------------------
+        root.addWidget(self._section(t("settings.sec_startup")))
+        self.cb_autostart = QCheckBox(t("settings.autostart"))
+        try:
+            self.cb_autostart.setChecked(autostart.is_enabled())
+        except Exception:
+            self.cb_autostart.setEnabled(False)
+        self.cb_autostart.toggled.connect(self._on_autostart)
+        root.addWidget(self.cb_autostart)
+
+        self.cb_minimized = QCheckBox(t("settings.start_minimized"))
+        self.cb_minimized.setChecked(ui.get("start_minimized", False))
+        self.cb_minimized.toggled.connect(
+            lambda v: self._save("start_minimized", v))
+        root.addWidget(self.cb_minimized)
+
+        self.cb_notifications = QCheckBox(t("settings.notifications"))
+        self.cb_notifications.setChecked(ui.get("notifications", True))
+        self.cb_notifications.toggled.connect(
+            lambda v: self._save("notifications", v))
+        root.addWidget(self.cb_notifications)
+
+        # --- Appearance -----------------------------------------------
+        root.addWidget(self._section(t("settings.sec_appearance")))
+        self.theme = QComboBox()
+        self._theme_keys = ["dark", "light"]
+        self.theme.addItem(t("settings.theme_dark"))
+        self.theme.addItem(t("settings.theme_light"))
+        cur_theme = ui.get("theme", DEFAULT_THEME)
+        self.theme.setCurrentIndex(self._theme_keys.index(cur_theme)
+                                   if cur_theme in self._theme_keys else 0)
+        self.theme.currentIndexChanged.connect(self._on_theme)
+        root.addLayout(self._labeled_row(t("settings.theme"), self.theme))
+
+        self.accent = QComboBox()
+        for key in _ACCENTS:
+            self.accent.addItem(key.capitalize(), key)
+        cur = ui.get("accent", DEFAULT_ACCENT)
+        keys = list(_ACCENTS)
+        self.accent.setCurrentIndex(keys.index(cur) if cur in keys else 0)
+        self.accent.currentIndexChanged.connect(self._on_accent)
+        root.addLayout(self._labeled_row(t("settings.accent"), self.accent))
+
+        # --- Status colours (dot + tray per connection state) ---------
+        root.addWidget(self._section(t("settings.sec_status")))
+        for state_key, label_key in (
+                ("connected", "settings.state_connected"),
+                ("connecting", "settings.state_connecting"),
+                ("disconnected", "settings.state_disconnected"),
+                ("error", "settings.state_error")):
+            root.addLayout(self._color_row(state_key, t(label_key)))
+
+        # --- Behaviour (technical) ------------------------------------
+        root.addWidget(self._section(t("settings.sec_behaviour")))
+        self.on_exit = QComboBox()
+        self._exit_keys = ["ask", "disconnect", "background"]
+        for label in (t("settings.exit_ask"), t("settings.exit_disconnect"),
+                      t("settings.exit_background")):
+            self.on_exit.addItem(label)
+        cur_exit = ("ask" if ui.get("ask_on_close", True)
+                    else ui.get("close_action", "disconnect"))
+        if cur_exit not in self._exit_keys:
+            cur_exit = "ask"
+        self.on_exit.setCurrentIndex(self._exit_keys.index(cur_exit))
+        self.on_exit.currentIndexChanged.connect(self._on_exit_changed)
+        root.addLayout(self._labeled_row(t("settings.on_exit"), self.on_exit))
+
+        # --- Maintenance ----------------------------------------------
+        root.addWidget(self._section(t("settings.sec_maintenance")))
+        maint = QHBoxLayout()
+        open_cfg = QPushButton(t("settings.open_config"))
+        open_cfg.setObjectName("ghost")
+        open_cfg.clicked.connect(
+            lambda: _open_path(str(cfgmod.config_dir())))
+        open_log = QPushButton(t("settings.open_log"))
+        open_log.setObjectName("ghost")
+        open_log.clicked.connect(
+            lambda: _open_path(connect_log_path(str(cfgmod.config_path()))))
+        maint.addWidget(open_cfg)
+        maint.addWidget(open_log)
+        maint.addStretch(1)
+        root.addLayout(maint)
+
+        # --- About / legal --------------------------------------------
+        root.addWidget(self._section(t("settings.sec_about")))
+        ver = QLabel(f"automatic VPN  v{_app_version()}")
+        ver.setObjectName("sectionTitle")
+        root.addWidget(ver)
+        for key in ("settings.disclaimer", "settings.license"):
+            lbl = QLabel(t(key))
+            lbl.setWordWrap(True)
+            lbl.setStyleSheet("color:#9a9da3;")
+            root.addWidget(lbl)
+
+        about_btns = QHBoxLayout()
+        repo = QPushButton(t("settings.open_repo"))
+        repo.setObjectName("ghost")
+        repo.clicked.connect(lambda: webbrowser.open(_REPO_URL))
+        third = QPushButton(t("settings.third_party"))
+        third.setObjectName("ghost")
+        third.clicked.connect(self._show_third_party)
+        about_btns.addWidget(repo)
+        about_btns.addWidget(third)
+        about_btns.addStretch(1)
+        root.addLayout(about_btns)
+
+        root.addStretch(1)
+        back = QPushButton(t("btn.back"))
+        back.setObjectName("primary")
+        back.clicked.connect(lambda: self._on_back())
+        root.addWidget(back)
+
+    # --- helpers --------------------------------------------------------
+
+    def _section(self, text: str) -> QLabel:
+        lbl = QLabel(text)
+        lbl.setObjectName("sectionTitle")
+        lbl.setContentsMargins(0, 12, 0, 2)
+        return lbl
+
+    def _labeled_row(self, label: str, widget: QWidget) -> QHBoxLayout:
+        """A 'Label   [control]' row with an aligned label column and a
+        fixed-width, left-aligned control (so combos don't stretch wide)."""
+        row = QHBoxLayout()
+        lbl = QLabel(label)
+        lbl.setMinimumWidth(230)
+        widget.setFixedWidth(240)
+        row.addWidget(lbl)
+        row.addWidget(widget)
+        row.addStretch(1)
+        return row
+
+    def _color_row(self, state_key: str, label: str) -> QHBoxLayout:
+        """A 'Label  [colour swatch]' row; the swatch opens a colour picker."""
+        row = QHBoxLayout()
+        lbl = QLabel(label)
+        lbl.setMinimumWidth(230)
+        swatch = QPushButton()
+        swatch.setFixedSize(48, 24)
+        swatch.setToolTip(t("settings.pick_color"))
+        self._paint_swatch(swatch, _state_color(state_key))
+        swatch.clicked.connect(lambda: self._pick_color(state_key, swatch))
+        row.addWidget(lbl)
+        row.addWidget(swatch)
+        row.addStretch(1)
+        return row
+
+    @staticmethod
+    def _paint_swatch(swatch: QPushButton, color: str) -> None:
+        swatch.setStyleSheet(
+            f"background:{color}; border:1px solid #888; border-radius:5px;")
+
+    def _pick_color(self, state_key: str, swatch: QPushButton) -> None:
+        from PyQt6.QtGui import QColor
+        chosen = QColorDialog.getColor(QColor(_state_color(state_key)), self,
+                                       t("settings.pick_color"))
+        if not chosen.isValid():
+            return
+        data = cfgmod.load_config()
+        data.setdefault("ui", {}).setdefault("state_colors", {})[state_key] = \
+            chosen.name()
+        try:
+            cfgmod.save_config(data)
+        except OSError:
+            pass
+        self._paint_swatch(swatch, chosen.name())
+
+    def _save(self, key: str, value) -> None:
+        data = cfgmod.load_config()
+        data.setdefault("ui", {})[key] = value
+        try:
+            cfgmod.save_config(data)
+        except OSError:
+            pass
+
+    def _on_autostart(self, enabled: bool) -> None:
+        try:
+            autostart.set_enabled(enabled)
+        except Exception as exc:  # registry write failed
+            QMessageBox.warning(self, t("settings.title"), str(exc))
+
+    def _on_accent(self, idx: int) -> None:
+        self._save("accent", self.accent.itemData(idx))
+        if self._on_appearance_changed:
+            self._on_appearance_changed()
+
+    def _on_theme(self, idx: int) -> None:
+        self._save("theme", self._theme_keys[idx])
+        if self._on_appearance_changed:
+            self._on_appearance_changed()
+
+    def _on_exit_changed(self, idx: int) -> None:
+        key = self._exit_keys[idx]
+        data = cfgmod.load_config()
+        ui = data.setdefault("ui", {})
+        if key == "ask":
+            ui["ask_on_close"] = True
+        else:
+            ui["ask_on_close"] = False
+            ui["close_action"] = key
+        try:
+            cfgmod.save_config(data)
+        except OSError:
+            pass
+
+    def _show_third_party(self) -> None:
+        QMessageBox.information(self, t("settings.third_party"),
+                                t("settings.third_party_text"))
+
+
 class MainWindow(QWidget):
     def __init__(self, icon=None):
         super().__init__()
@@ -621,7 +983,8 @@ class MainWindow(QWidget):
         self.setWindowTitle("automatic VPN")
         outer = QVBoxLayout(self)
 
-        # language selector (top bar, right-aligned)
+        # top bar (right-aligned): language selector. App settings live on
+        # their own button in the control view (clearer than a stray gear).
         bar = QHBoxLayout()
         bar.addStretch(1)
         self.lang_label = QLabel(t("lang.label") + ":")
@@ -639,11 +1002,17 @@ class MainWindow(QWidget):
         outer.addWidget(self.stack)
         self.setup = SetupView(on_done=self._show_control,
                                on_cancel=self._show_control)
-        self.control = ControlView(on_settings=self._show_setup)
+        self.control = ControlView(on_settings=self._show_setup,
+                                   on_app_settings=self._show_settings)
+        self.settings = SettingsView(
+            on_back=self._show_control,
+            on_appearance_changed=self._on_appearance_changed)
         self.stack.addWidget(self.setup)
         self.stack.addWidget(self.control)
+        self.stack.addWidget(self.settings)
         self._build_tray()
         self.control.on_state = self._update_tray
+        self._last_state = None   # for one-shot state-change notifications
 
         # Global TOTP hotkey: types the current 6-digit code into the
         # focused field. Seed is pulled lazily from the keyring on each press.
@@ -662,8 +1031,6 @@ class MainWindow(QWidget):
         self.tray = None
         if not QSystemTrayIcon.isSystemTrayAvailable():
             return
-        self._state_icons = {s: _state_icon(s)
-                             for s in ("green", "amber", "blue", "red")}
         self.tray = QSystemTrayIcon(self._icon, self)
         self.tray.setToolTip("automatic VPN")
         menu = QMenu()
@@ -695,10 +1062,8 @@ class MainWindow(QWidget):
         # state: connected | connecting | error | disconnected
         if self.tray is None:
             return
-        name = {"connected": "green", "connecting": "amber",
-                "error": "red", "disconnected": "blue"}.get(state, "blue")
-        ic = self._state_icons.get(name)
-        if ic is not None and not ic.isNull():
+        ic = _state_tray_icon(_state_color(state))
+        if not ic.isNull():
             self.tray.setIcon(ic)
         tip = {"connected": t("tray.tip_connected"),
                "connecting": t("tray.tip_connecting"),
@@ -708,6 +1073,23 @@ class MainWindow(QWidget):
         if hasattr(self, "act_connect"):
             self.act_connect.setEnabled(state in ("disconnected", "error"))
             self.act_disconnect.setEnabled(state in ("connected", "connecting"))
+        # Notify on real state changes (connected / disconnected / error).
+        if state != self._last_state:
+            msg = {"connected": t("tray.tip_connected"),
+                   "disconnected": t("tray.tip_disconnected"),
+                   "error": t("tray.tip_error")}.get(state)
+            if msg and self._last_state is not None:
+                self._notify("automatic VPN", msg)
+            self._last_state = state
+
+    def _notify(self, title: str, msg: str) -> None:
+        """Show a tray balloon, honouring the notifications setting."""
+        if self.tray is None:
+            return
+        if not (cfgmod.load_config().get("ui") or {}).get("notifications", True):
+            return
+        self.tray.showMessage(title, msg,
+                              QSystemTrayIcon.MessageIcon.Information, 3000)
 
     def _show_window(self):
         self.showNormal()
@@ -736,29 +1118,62 @@ class MainWindow(QWidget):
             pass
         self._apply_language()
 
-    def _apply_language(self):
-        """Re-create the views and re-label the tray so the new language
-        takes effect immediately."""
-        on_setup_view = self.stack.currentWidget() is self.setup
-        self.control._timer.stop()   # stop the old poll before tearing it down
-        self.stack.removeWidget(self.setup)
-        self.stack.removeWidget(self.control)
-        self.setup.deleteLater()
-        self.control.deleteLater()
+    def _current_key(self) -> str:
+        cur = self.stack.currentWidget()
+        if cur is self.setup:
+            return "setup"
+        if cur is self.settings:
+            return "settings"
+        return "control"
+
+    def _rebuild_views(self, current_key: str) -> None:
+        """Recreate all three views (picks up new language / theme / accent
+        and re-tints icons), then restore the active one."""
+        if getattr(self, "control", None) is not None:
+            self.control._timer.stop()
+        for attr in ("setup", "control", "settings"):
+            w = getattr(self, attr, None)
+            if w is not None:
+                self.stack.removeWidget(w)
+                w.deleteLater()
         self.setup = SetupView(on_done=self._show_control,
                                on_cancel=self._show_control)
-        self.control = ControlView(on_settings=self._show_setup)
+        self.control = ControlView(on_settings=self._show_setup,
+                                   on_app_settings=self._show_settings)
+        self.settings = SettingsView(
+            on_back=self._show_control,
+            on_appearance_changed=self._on_appearance_changed)
         self.control.on_state = self._update_tray
+        self._last_state = None
         self.stack.addWidget(self.setup)
         self.stack.addWidget(self.control)
-        self.stack.setCurrentWidget(
-            self.setup if on_setup_view else self.control)
+        self.stack.addWidget(self.settings)
+        target = {"setup": self.setup,
+                  "settings": self.settings}.get(current_key, self.control)
+        self.stack.setCurrentWidget(target)
+
+    def _apply_language(self):
+        """Re-create the views and re-label the chrome so the new language
+        takes effect immediately."""
+        self._rebuild_views(self._current_key())
         self.lang_label.setText(t("lang.label") + ":")
         if self.tray is not None:
             self.act_open.setText(t("tray.open"))
             self.act_connect.setText(t("btn.connect"))
             self.act_disconnect.setText(t("btn.disconnect"))
             self.act_quit.setText(t("tray.quit"))
+
+    def _on_appearance_changed(self):
+        """Theme or accent changed in Settings: restyle the app live and
+        rebuild the views so the accent-tinted icons update too."""
+        global _CURRENT_ACCENT
+        ui = cfgmod.load_config().get("ui") or {}
+        _CURRENT_ACCENT = ui.get("accent", DEFAULT_ACCENT)
+        app = QApplication.instance()
+        if app is not None:
+            app.setStyleSheet(_build_stylesheet(
+                _CURRENT_ACCENT, ui.get("theme", DEFAULT_THEME)))
+        self._rebuild_views("settings")
 
     def _route(self):
         view = gl.choose_view(cfgmod.load_config(), tw.is_registered())
@@ -798,6 +1213,21 @@ class MainWindow(QWidget):
         self._swap_setup()
         self.stack.setCurrentWidget(self.setup)
 
+    def _swap_settings(self):
+        """Rebuild the settings view so it reflects the current state
+        (autostart registry, accent, etc.) each time it opens."""
+        idx = self.stack.indexOf(self.settings)
+        new = SettingsView(on_back=self._show_control,
+                           on_appearance_changed=self._on_appearance_changed)
+        self.stack.insertWidget(idx, new)
+        self.stack.removeWidget(self.settings)
+        self.settings.deleteLater()
+        self.settings = new
+
+    def _show_settings(self):
+        self._swap_settings()
+        self.stack.setCurrentWidget(self.settings)
+
     # --- TOTP hotkey ----------------------------------------------------
 
     def _current_totp_seed(self) -> str:
@@ -828,9 +1258,7 @@ class MainWindow(QWidget):
         if self.tray is not None:
             event.ignore()
             self.hide()
-            self.tray.showMessage(
-                "automatic VPN", t("tray.minimized"),
-                QSystemTrayIcon.MessageIcon.Information, 3000)
+            self._notify("automatic VPN", t("tray.minimized"))
             return
         if self._perform_exit_teardown():
             event.accept()
@@ -894,6 +1322,26 @@ class MainWindow(QWidget):
         return action
 
 
+def _app_version() -> str:
+    """Installed package version, or 'dev' when running from a checkout."""
+    try:
+        from importlib.metadata import version
+        return version("automatic-openconnect")
+    except Exception:
+        return "dev"
+
+
+def _open_path(path: str) -> None:
+    """Open a file or folder in the OS file manager (best effort)."""
+    try:
+        if sys.platform.startswith("win"):
+            os.startfile(path)  # type: ignore[attr-defined]  # noqa: S606
+        else:
+            webbrowser.open("file://" + path)
+    except Exception:
+        pass
+
+
 def _app_icon() -> QIcon:
     """Load the bundled app icon; empty QIcon if it cannot be found."""
     try:
@@ -903,13 +1351,30 @@ def _app_icon() -> QIcon:
         return QIcon()
 
 
-def _state_icon(name: str) -> QIcon:
-    """Load a state-coloured tray icon (green/amber/blue/red)."""
+def _state_tray_icon(color_hex: str) -> QIcon:
+    """Build the tray icon at runtime: a rounded tile in the given state
+    colour with the white padlock glyph on top. Lets the status colours be
+    fully user-configurable instead of shipping fixed coloured .ico files."""
+    from PyQt6.QtCore import QRectF
+    from PyQt6.QtGui import QColor, QPainter, QPixmap
+    size = 64
+    pm = QPixmap(size, size)
+    pm.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pm)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor(color_hex))
+    painter.drawRoundedRect(QRectF(2, 2, size - 4, size - 4), 14, 14)
     try:
-        p = _ir.files("automatic_openconnect") / "assets" / f"icon-{name}.ico"
-        return QIcon(str(p))
+        glyph = QPixmap(_asset_url("lock-glyph"))
+        if not glyph.isNull():
+            painter.drawPixmap(0, 0, glyph.scaled(
+                size, size, Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation))
     except Exception:
-        return QIcon()
+        pass
+    painter.end()
+    return QIcon(pm)
 
 
 def run() -> int:
@@ -925,10 +1390,14 @@ def run() -> int:
 
 
 def main() -> int:
+    global _CURRENT_ACCENT
+    ui = (cfgmod.load_config().get("ui") or {})
     # Pick up the saved UI language (default English) before building widgets.
-    i18n.set_lang((cfgmod.load_config().get("ui") or {}).get("lang", "en"))
+    i18n.set_lang(ui.get("lang", "en"))
+    _CURRENT_ACCENT = ui.get("accent", DEFAULT_ACCENT)
     app = QApplication(sys.argv)
-    app.setStyleSheet(_STYLESHEET)
+    app.setStyleSheet(_build_stylesheet(ui.get("accent", DEFAULT_ACCENT),
+                                        ui.get("theme", DEFAULT_THEME)))
     # Keep the app alive when the window is closed — the tray icon controls
     # it. Real exit happens via the tray's "Beenden".
     app.setQuitOnLastWindowClosed(False)
@@ -938,7 +1407,15 @@ def main() -> int:
     win.setWindowIcon(icon)
     win.setMinimumSize(560, 520)
     win.resize(640, 560)
-    win.show()
+    # Start hidden in the tray if the user asked for it (and a tray exists);
+    # otherwise show the window normally.
+    if ui.get("start_minimized", False) and win.tray is not None:
+        if ui.get("notifications", True):
+            win.tray.showMessage(
+                "automatic VPN", t("tray.started_hidden"),
+                QSystemTrayIcon.MessageIcon.Information, 2500)
+    else:
+        win.show()
     return app.exec()
 
 

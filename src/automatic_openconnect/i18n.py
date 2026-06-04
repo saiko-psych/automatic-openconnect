@@ -230,6 +230,63 @@ _STRINGS: dict[str, dict[str, str]] = {
     # show/hide secrets (eye icon tooltips)
     "btn.show": {"en": "Show", "de": "Anzeigen"},
     "btn.hide": {"en": "Hide", "de": "Verbergen"},
+    # app settings
+    "settings.title": {"en": "Settings", "de": "Einstellungen"},
+    "settings.sec_startup": {"en": "Startup & tray",
+                             "de": "Start & Tray"},
+    "settings.autostart": {"en": "Start automatically at login",
+                           "de": "Beim Anmelden automatisch starten"},
+    "settings.start_minimized": {"en": "Start minimised to the tray",
+                                 "de": "Minimiert im Tray starten"},
+    "settings.notifications": {"en": "Show tray notifications",
+                               "de": "Tray-Benachrichtigungen anzeigen"},
+    "settings.sec_appearance": {"en": "Appearance", "de": "Darstellung"},
+    "settings.theme": {"en": "Theme", "de": "Design"},
+    "settings.theme_dark": {"en": "Dark", "de": "Dunkel"},
+    "settings.theme_light": {"en": "Light", "de": "Hell"},
+    "settings.accent": {"en": "Accent colour", "de": "Akzentfarbe"},
+    "settings.sec_status": {"en": "Status colours", "de": "Statusfarben"},
+    "settings.state_connected": {"en": "Connected", "de": "Verbunden"},
+    "settings.state_connecting": {"en": "Connecting", "de": "Verbindet"},
+    "settings.state_disconnected": {"en": "Disconnected", "de": "Getrennt"},
+    "settings.state_error": {"en": "Error", "de": "Fehler"},
+    "settings.pick_color": {"en": "Pick a colour", "de": "Farbe wählen"},
+    "settings.sec_behaviour": {"en": "Behaviour", "de": "Verhalten"},
+    "settings.on_exit": {"en": "On exit (connected)",
+                         "de": "Beim Beenden (verbunden)"},
+    "settings.exit_ask": {"en": "Ask", "de": "Nachfragen"},
+    "settings.exit_disconnect": {"en": "Disconnect", "de": "Trennen"},
+    "settings.exit_background": {"en": "Keep connected in background",
+                                 "de": "Im Hintergrund verbunden lassen"},
+    "settings.sec_maintenance": {"en": "Maintenance", "de": "Wartung"},
+    "settings.open_config": {"en": "Open config folder",
+                             "de": "Konfigurationsordner öffnen"},
+    "settings.open_log": {"en": "Open log file", "de": "Log-Datei öffnen"},
+    "settings.sec_about": {"en": "About & legal", "de": "Über & Rechtliches"},
+    "settings.disclaimer": {
+        "en": "Community tool — not affiliated with or supported by the "
+              "University of Graz or uniIT. Provided as is, use at your own risk.",
+        "de": "Community-Tool — nicht von der Universität Graz oder uniIT "
+              "betreut oder unterstützt. Ohne Gewähr, Nutzung auf eigene Gefahr."},
+    "settings.license": {
+        "en": "Licensed under the MIT License. © 2026 saiko-psych.",
+        "de": "Lizenziert unter der MIT-Lizenz. © 2026 saiko-psych."},
+    "settings.open_repo": {"en": "Open repository", "de": "Repository öffnen"},
+    "settings.third_party": {"en": "Third-party licenses",
+                             "de": "Drittanbieter-Lizenzen"},
+    "settings.third_party_text": {
+        "en": "automatic VPN is open source (MIT) and builds on these "
+              "components, each under its own open-source license:\n\n"
+              "• openconnect-sso\n• OpenConnect\n• Qt / PyQt6\n• pyotp\n"
+              "• pynput\n• keyring\n• OpenCV (optional — QR import)\n\n"
+              "See each project's repository for the full license terms.",
+        "de": "automatic VPN ist quelloffen (MIT) und baut auf diesen "
+              "Komponenten auf, jede unter ihrer eigenen Open-Source-Lizenz:\n\n"
+              "• openconnect-sso\n• OpenConnect\n• Qt / PyQt6\n• pyotp\n"
+              "• pynput\n• keyring\n• OpenCV (optional — QR-Import)\n\n"
+              "Die vollständigen Lizenzbedingungen findest du im jeweiligen Projekt."},
+    "tray.started_hidden": {"en": "Running in the tray.",
+                            "de": "Läuft im Tray."},
     # generic
     "generic.error": {"en": "Error", "de": "Fehler"},
     "lang.label": {"en": "Language", "de": "Sprache"},
