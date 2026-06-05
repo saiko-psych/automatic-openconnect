@@ -49,6 +49,11 @@ Three steps. The app does the heavy lifting — you don't need the command line.
 Download and run the **official installer**:
 **https://gui.openconnect-vpn.net/download/**
 
+> [!IMPORTANT]
+> In the installer, make sure the **command-line / console version**
+> component is **ticked** — that's the CLI `openconnect.exe` the app drives.
+> Without it the GUI is installed but `openconnect.exe` is missing.
+
 > Use the **installer**, not a single `openconnect.exe` you found somewhere — a
 > loose exe does **not** work. It needs its DLLs, the routing script and the
 > Wintun driver, which the installer puts in place together (in
