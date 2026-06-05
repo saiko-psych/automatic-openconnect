@@ -463,7 +463,7 @@ def _start_tunnel(host: str, cookie: str, fingerprint: str,
         except Exception:
             line = ""
         if line:
-            print(f"[openconnect] {line.rstrip()}", file=sys.stderr)
+            _echo_openconnect(line)
             if "Configured as" in line or "Connected as" in line:
                 saw_configured = True
             if "route configuration done" in line:
@@ -496,6 +496,21 @@ def _start_tunnel(host: str, cookie: str, fingerprint: str,
     )
 
 
+def _echo_openconnect(line: str) -> None:
+    """Print an openconnect output line to the connect log, softening the
+    benign Wintun messages. On Windows openconnect ALWAYS tries to open an
+    existing tunnel adapter first, fails, then creates one — the 'Failed /
+    Could not open Wintun adapter' wording reads like an error but isn't."""
+    txt = line.rstrip()
+    if not txt:
+        return
+    if ("Failed to find matching adapter name" in txt
+            or "Could not open Wintun adapter" in txt):
+        txt = ("(no existing tunnel adapter yet — creating a fresh one, "
+               "this is normal)")
+    print(f"[openconnect] {txt}", file=sys.stderr)
+
+
 def _spawn_stdout_drainer(proc: subprocess.Popen) -> None:
     """Drain openconnect.exe's stdout in a background daemon thread.
 
@@ -512,8 +527,7 @@ def _spawn_stdout_drainer(proc: subprocess.Popen) -> None:
             for line in iter(proc.stdout.readline, ""):
                 if not line:
                     break
-                # Quiet: only echo non-empty lines, prefixed.
-                print(f"[openconnect] {line.rstrip()}", file=sys.stderr)
+                _echo_openconnect(line)
         except Exception:
             pass
 

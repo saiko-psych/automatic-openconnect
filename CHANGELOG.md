@@ -3,6 +3,19 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.8] - 2026-06-05
+
+### Added
+- The prerequisite install screen (uv / openconnect-sso) now shows a centered
+  message, an **indeterminate progress bar**, and a "this takes a minute" hint
+  — instead of a lone line of text in a big empty dialog.
+
+### Changed
+- Benign openconnect **Wintun messages** ("Failed to find matching adapter" /
+  "Could not open Wintun adapter") are reworded in the connection log.
+  openconnect always tries to open an existing adapter, fails, then creates a
+  fresh one — so these no longer read like errors.
+
 ## [0.1.7] - 2026-06-05
 
 ### Changed

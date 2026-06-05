@@ -240,8 +240,13 @@ _STRINGS: dict[str, dict[str, str]] = {
     "fixbtn.open_setup": {"en": "Go to setup", "de": "Zum Setup"},
     "config.created_title": {"en": "Created", "de": "Angelegt"},
     "config.created_msg": {"en": "config.toml created:", "de": "config.toml angelegt:"},
-    "sso.installing": {"en": "Installing openconnect-sso … (1–2 minutes)",
-                       "de": "openconnect-sso wird installiert … (1–2 Minuten)"},
+    "sso.installing": {"en": "Installing openconnect-sso …",
+                       "de": "openconnect-sso wird installiert …"},
+    "sso.installing_hint": {
+        "en": "This can take a minute or two (it downloads Python + packages). "
+              "Please wait — the window will update when it's done.",
+        "de": "Das kann ein bis zwei Minuten dauern (lädt Python + Pakete). "
+              "Bitte warten — das Fenster aktualisiert sich, wenn es fertig ist."},
     "sso.install_title": {"en": "Installation", "de": "Installation"},
     "sso.install_ok": {"en": "openconnect-sso was installed.",
                        "de": "openconnect-sso wurde installiert."},

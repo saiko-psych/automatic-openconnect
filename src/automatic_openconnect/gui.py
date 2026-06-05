@@ -25,8 +25,8 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QColorDialog, QComboBox, QDialog, QFileDialog,
     QFormLayout, QFrame, QGridLayout, QHBoxLayout, QInputDialog, QLabel,
-    QLineEdit, QMenu, QMessageBox, QPlainTextEdit, QPushButton, QScrollArea,
-    QStackedWidget, QSystemTrayIcon, QVBoxLayout, QWidget,
+    QLineEdit, QMenu, QMessageBox, QPlainTextEdit, QProgressBar, QPushButton,
+    QScrollArea, QStackedWidget, QSystemTrayIcon, QVBoxLayout, QWidget,
 )
 
 from . import config as cfgmod
@@ -139,6 +139,9 @@ QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid @INDBORDER@;
 QCheckBox::indicator:hover { border-color: @ACCENT@; }
 QCheckBox::indicator:checked { background: @ACCENT@; border-color: @ACCENT@;
                                image: url("@CHECK@"); }
+QProgressBar { background-color: @PANEL@; border: 1px solid @BORDER@;
+               border-radius: 7px; height: 14px; }
+QProgressBar::chunk { background-color: @ACCENT@; border-radius: 7px; }
 QPlainTextEdit { background-color: @LOGBG@; color: @FG@; border: 1px solid @BORDER@;
                  font-family: 'Cascadia Mono', Consolas, monospace; }
 QScrollBar:vertical { background: transparent; width: 10px; margin: 0; }
@@ -372,8 +375,7 @@ class PreflightDialog(QDialog):
         self._proc.setProcessChannelMode(
             QProcess.ProcessChannelMode.MergedChannels)
         self._proc.finished.connect(self._sso_done)
-        self._clear()
-        self._root.addWidget(QLabel(t("sso.installing")))
+        self._show_busy(t("sso.installing"))
         self._proc.start(cmd[0], cmd[1:])
         if not self._proc.waitForStarted(8000):
             QMessageBox.critical(self, t("generic.error"), t("sso.no_uv"))
@@ -385,8 +387,7 @@ class PreflightDialog(QDialog):
             return
         self._proc = QProcess(self)
         self._proc.finished.connect(self._uv_done)
-        self._clear()
-        self._root.addWidget(QLabel(t("sso.installing_uv")))
+        self._show_busy(t("sso.installing_uv"))
         self._proc.start("powershell", [
             "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
             "irm https://astral.sh/uv/install.ps1 | iex"])
@@ -394,6 +395,27 @@ class PreflightDialog(QDialog):
             QMessageBox.critical(self, t("generic.error"), t("sso.uv_fail"))
             self._proc = None
             self._rebuild()
+
+    def _show_busy(self, message: str) -> None:
+        """Centered message + an indeterminate progress bar, while a
+        background install runs (uv / openconnect-sso)."""
+        self._clear()
+        self._root.addStretch(1)
+        lbl = QLabel(message)
+        lbl.setObjectName("statusText")
+        lbl.setWordWrap(True)
+        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._root.addWidget(lbl)
+        bar = QProgressBar()
+        bar.setRange(0, 0)            # indeterminate (marquee)
+        bar.setTextVisible(False)
+        bar.setFixedWidth(360)
+        self._root.addWidget(bar, alignment=Qt.AlignmentFlag.AlignCenter)
+        hint = QLabel(t("sso.installing_hint"))
+        hint.setObjectName("subheader")
+        hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._root.addWidget(hint)
+        self._root.addStretch(1)
 
     def _uv_done(self, code, _status):
         self._proc = None
