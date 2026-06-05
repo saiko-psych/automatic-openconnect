@@ -20,7 +20,8 @@ import os
 from dataclasses import dataclass
 from typing import List, Optional
 
-from .gui_logic import detect_openconnect, detect_openconnect_sso
+from .gui_logic import (detect_openconnect, detect_openconnect_sso,
+                        normalize_openconnect_path)
 
 CONFIG_TOML = os.path.join(os.path.expanduser("~"), ".config",
                            "openconnect-sso", "config.toml")
@@ -46,13 +47,11 @@ class Check:
 
 
 def check_openconnect(path: str = "") -> Check:
-    # Use the configured path if it resolves; otherwise re-detect LIVE so a
-    # tool installed after setup (or under a stale/empty path) is still found.
-    p = (path or "").strip()
-    ok = bool(p) and os.path.exists(p)
-    if not ok:
-        d = detect_openconnect()
-        ok = bool(d) and os.path.exists(d)
+    # normalize_openconnect_path heals a folder / openconnect-gui.exe / stale
+    # path and auto-detects, so the check reflects the real openconnect.exe the
+    # backend will run — and a directory no longer shows up as a false "OK".
+    resolved = normalize_openconnect_path(path)
+    ok = bool(resolved) and os.path.isfile(resolved)
     return Check("check.openconnect", ok,
                  "" if ok else "fix.openconnect",
                  "" if ok else "open_download")

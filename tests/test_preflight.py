@@ -9,17 +9,28 @@ from automatic_openconnect import preflight
 
 
 class TestOpenconnect(unittest.TestCase):
-    def test_ok_when_path_exists(self):
-        with mock.patch("automatic_openconnect.preflight.os.path.exists",
-                        return_value=True):
-            c = preflight.check_openconnect(r"C:\oc\openconnect.exe")
+    def test_ok_when_real_file(self):
+        cli = r"C:\oc\openconnect.exe"
+        with mock.patch("os.path.isdir", return_value=False), \
+             mock.patch("os.path.isfile", side_effect=lambda p: p == cli):
+            c = preflight.check_openconnect(cli)
         self.assertTrue(c.ok)
         self.assertEqual(c.fix, "")
 
+    def test_directory_is_not_ok(self):
+        # A folder (e.g. a Start-Menu shortcut dir) must NOT pass as the engine.
+        d = r"C:\ProgramData\...\Start Menu\Programs\OpenConnect-GUI"
+        with mock.patch("os.path.isdir", side_effect=lambda p: p == d), \
+             mock.patch("os.path.isfile", return_value=False), \
+             mock.patch("automatic_openconnect.gui_logic.detect_openconnect",
+                        return_value=""):
+            c = preflight.check_openconnect(d)
+        self.assertFalse(c.ok)
+
     def test_missing_gives_install_hint(self):
-        with mock.patch("automatic_openconnect.preflight.os.path.exists",
-                        return_value=False), \
-             mock.patch("automatic_openconnect.preflight.detect_openconnect",
+        with mock.patch("os.path.isdir", return_value=False), \
+             mock.patch("os.path.isfile", return_value=False), \
+             mock.patch("automatic_openconnect.gui_logic.detect_openconnect",
                         return_value=""):
             c = preflight.check_openconnect("")
         self.assertFalse(c.ok)
@@ -145,6 +156,8 @@ class TestCheckAll(unittest.TestCase):
     def test_returns_all_checks_and_all_ok_helper(self):
         with mock.patch("automatic_openconnect.preflight.os.path.exists",
                         return_value=True), \
+             mock.patch("os.path.isfile", return_value=True), \
+             mock.patch("os.path.isdir", return_value=False), \
              mock.patch("automatic_openconnect.secrets.get_uni_login_password",
                         return_value="pw"), \
              mock.patch("automatic_openconnect.secrets.get_uni_totp_secret",

@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.5] - 2026-06-05
+
+### Fixed
+- **`PermissionError [WinError 5]` / `Access denied` on connect**: a misconfigured
+  openconnect path pointing at a *folder* (e.g. the Start-Menu shortcut group)
+  was passed straight to the OS and rejected. Path resolution now heals a
+  folder, a `.lnk`/shortcut, `openconnect-gui.exe`, or any stale/invalid path
+  to the real `openconnect.exe` — auto-detecting if needed — so a bad config
+  self-heals instead of failing.
+- The prerequisites **openconnect check no longer shows a folder as “OK”** (it
+  must be an actual executable file).
+
 ## [0.1.4] - 2026-06-05
 
 Fixes the "all prerequisites OK but connect fails" class of tester problems —

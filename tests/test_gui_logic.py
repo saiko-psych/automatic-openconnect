@@ -142,22 +142,33 @@ class TestDetect(unittest.TestCase):
 
 
 class TestNormalizeOpenconnectPath(unittest.TestCase):
+    CLI = r"C:\Program Files\OpenConnect-GUI\openconnect.exe"
+
     def test_gui_exe_becomes_cli(self):
         gui = r"C:\Program Files\OpenConnect-GUI\openconnect-gui.exe"
-        cli = r"C:\Program Files\OpenConnect-GUI\openconnect.exe"
-        with mock.patch("automatic_openconnect.gui_logic.os.path.exists",
-                        side_effect=lambda p: p == cli):
-            self.assertEqual(gl.normalize_openconnect_path(gui), cli)
+        with mock.patch("os.path.isdir", return_value=False), \
+             mock.patch("os.path.isfile", side_effect=lambda p: p == self.CLI):
+            self.assertEqual(gl.normalize_openconnect_path(gui), self.CLI)
+
+    def test_directory_becomes_cli_inside(self):
+        d = r"C:\Program Files\OpenConnect-GUI"
+        with mock.patch("os.path.isdir", side_effect=lambda p: p == d), \
+             mock.patch("os.path.isfile", side_effect=lambda p: p == self.CLI):
+            self.assertEqual(gl.normalize_openconnect_path(d), self.CLI)
 
     def test_plain_openconnect_unchanged(self):
-        cli = r"C:\Program Files\OpenConnect-GUI\openconnect.exe"
-        self.assertEqual(gl.normalize_openconnect_path(cli), cli)
+        with mock.patch("os.path.isdir", return_value=False), \
+             mock.patch("os.path.isfile", side_effect=lambda p: p == self.CLI):
+            self.assertEqual(gl.normalize_openconnect_path(self.CLI), self.CLI)
 
-    def test_gui_exe_kept_if_no_cli_sibling(self):
-        gui = r"C:\x\openconnect-gui.exe"
-        with mock.patch("automatic_openconnect.gui_logic.os.path.exists",
-                        return_value=False):
-            self.assertEqual(gl.normalize_openconnect_path(gui), gui)
+    def test_bogus_path_falls_back_to_detection(self):
+        detected = r"C:\detected\openconnect.exe"
+        with mock.patch("os.path.isdir", return_value=False), \
+             mock.patch("os.path.isfile", return_value=False), \
+             mock.patch("automatic_openconnect.gui_logic.detect_openconnect",
+                        return_value=detected):
+            self.assertEqual(gl.normalize_openconnect_path(r"C:\bad\x.exe"),
+                             detected)
 
 
 class TestResolveUv(unittest.TestCase):

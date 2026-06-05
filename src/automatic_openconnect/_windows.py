@@ -313,10 +313,11 @@ def _authenticate(cfg: dict) -> Tuple[str, str, str]:
     env = os.environ.copy()
     oc_override = cfg.get("openconnect_path_win") or cfg.get("openconnect_path", "")
     try:
-        oc_path = normalize_openconnect_path(_resolve_tool("openconnect", oc_override))
-        oc_dir = os.path.dirname(oc_path)
-        if oc_dir and os.path.isdir(oc_dir):
-            env["PATH"] = oc_dir + os.pathsep + env.get("PATH", "")
+        oc_path = normalize_openconnect_path(oc_override)
+        if oc_path and os.path.isfile(oc_path):
+            oc_dir = os.path.dirname(oc_path)
+            if oc_dir and os.path.isdir(oc_dir):
+                env["PATH"] = oc_dir + os.pathsep + env.get("PATH", "")
     except Exception:
         pass
 
@@ -391,7 +392,12 @@ def _start_tunnel(host: str, cookie: str, fingerprint: str,
     _check_admin()
     from .gui_logic import normalize_openconnect_path
     oc_override = cfg.get("openconnect_path_win") or cfg.get("openconnect_path", "")
-    oc_path = normalize_openconnect_path(_resolve_tool("openconnect", oc_override))
+    # Resolve via normalize first: it heals a folder / openconnect-gui.exe /
+    # stale path to the real openconnect.exe (auto-detecting if needed). Only
+    # fall back to _resolve_tool (PATH lookup + helpful error) if that fails.
+    oc_path = normalize_openconnect_path(oc_override)
+    if not (oc_path and os.path.isfile(oc_path)):
+        oc_path = _resolve_tool("openconnect", oc_override)
 
     cmd = [
         oc_path,

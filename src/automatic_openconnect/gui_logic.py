@@ -61,15 +61,24 @@ def choose_view(config: dict, registered: bool) -> str:
 
 
 def normalize_openconnect_path(path: str) -> str:
-    """If the user picked ``openconnect-gui.exe`` (the graphical client),
-    point to ``openconnect.exe`` (the CLI engine) in the same folder — they
-    sit side by side and are easy to confuse."""
-    p = (path or "").strip()
-    if os.path.basename(p).lower() == "openconnect-gui.exe":
-        cli = os.path.join(os.path.dirname(p), "openconnect.exe")
-        if os.path.exists(cli):
-            return cli
-    return p
+    """Coerce a user-given openconnect path to the real CLI engine.
+
+    Fixes the common mistakes that produce cryptic failures:
+      * a folder (e.g. the Start-Menu group, or the install dir) → look for
+        ``openconnect.exe`` inside it,
+      * the graphical ``openconnect-gui.exe`` → ``openconnect.exe`` beside it,
+    and, if the result still isn't a real file (stale/empty/invalid path),
+    falls back to auto-detection so a bogus config can't break the connection.
+    """
+    p = (path or "").strip().strip('"')
+    cand = p
+    if p and os.path.isdir(p):
+        cand = os.path.join(p, "openconnect.exe")
+    elif os.path.basename(p).lower() == "openconnect-gui.exe":
+        cand = os.path.join(os.path.dirname(p), "openconnect.exe")
+    if cand and os.path.isfile(cand):
+        return cand
+    return detect_openconnect() or p
 
 
 def detect_openconnect() -> str:

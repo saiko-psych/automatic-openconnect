@@ -462,7 +462,8 @@ class SetupView(QWidget):
         existing = (cfgmod.load_config().get("auto_vpn") or {})
         self.email = QLineEdit(existing.get("user_email", ""))
         self.server = QLineEdit(existing.get("server", "univpn.uni-graz.at"))
-        self.oc = QLineEdit(existing.get("openconnect_path") or gl.detect_openconnect())
+        self.oc = QLineEdit(gl.normalize_openconnect_path(
+            existing.get("openconnect_path", "")))
         self.sso = QLineEdit(existing.get("openconnect_sso_path") or gl.detect_openconnect_sso())
 
         # The setup form doubles as the config view: prefill the currently
@@ -618,7 +619,7 @@ class SetupView(QWidget):
     def _submit(self):
         fields = {
             "email": self.email.text(), "server": self.server.text(),
-            "openconnect_path": self.oc.text(),
+            "openconnect_path": gl.normalize_openconnect_path(self.oc.text()),
             "openconnect_sso_path": self.sso.text(),
         }
         errors = gl.validate_setup_form(fields)

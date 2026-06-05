@@ -40,49 +40,57 @@ keyring, never in config or logs. Built as a thin automation layer on top of
   Authenticator export QR codes).
 - **Headless library** for CI/servers, with the same keyring‑backed login.
 
-## Install
+## Setup (Windows)
 
-### Desktop app (Windows)
+Three steps. The app does the heavy lifting — you don't need the command line.
 
-**Easiest — download the executable:** grab `automatic-vpn.exe` from the
+### 1. Install the VPN engine (OpenConnect-GUI)
+
+Download and run the **official installer**:
+**https://gui.openconnect-vpn.net/download/**
+
+> Use the **installer**, not a single `openconnect.exe` you found somewhere — a
+> loose exe does **not** work. It needs its DLLs, the routing script and the
+> Wintun driver, which the installer puts in place together (in
+> `C:\Program Files\OpenConnect-GUI\`). You only install it; you never open it.
+
+### 2. Get the app
+
+Download **`automatic-vpn.exe`** from the
 [latest release](https://github.com/saiko-psych/automatic-openconnect/releases/latest)
-and run it. The build is unsigned, so SmartScreen shows *“Windows protected
-your PC”* → **More info → Run anyway**.
+and run it. It's unsigned, so SmartScreen shows *“Windows protected your PC”* →
+**More info → Run anyway**.
 
-**Or install with [uv]** (gets updates via `uv tool upgrade`). Run this as
-**one line** — PowerShell does not accept the `\` line-continuations you may
-know from bash:
+### 3. First run — the guided setup
 
-```powershell
-uv tool install --with PyQt6 --with "setuptools<70" --with opencv-python-headless --from git+https://github.com/saiko-psych/automatic-openconnect automatic-openconnect
-```
+The app checks the prerequisites and fixes what it can:
 
-Then run `automatic-vpn` (windowed) or `automatic-vpn-console` (keeps a
-console open for tracebacks). `opencv-python-headless` is optional — it is
-only needed to read a TOTP seed from a QR‑code image.
+- **openconnect-sso** (the SAML/Keycloak login helper): click **Install now**.
+  The app installs it with [uv] — and installs uv itself first if you don't
+  have it. No admin rights, no Python needed.
+- It auto-detects `openconnect.exe` from step 1. (If you point at it manually,
+  pick **`openconnect.exe`**, not `openconnect-gui.exe` — the app corrects that
+  for you anyway.)
+- Enter your **email**, **password** and **TOTP seed**. You can type the seed,
+  **load a QR-code image**, or **paste an `otpauth://` URL or a JSON export**
+  (e.g. from FreeOTP). Secrets go into the Windows Credential Manager — never
+  into config or logs.
+- Click **Set up**. That registers a scheduled task once (a single UAC
+  prompt). Afterwards **Connect** needs no elevation and opens no console.
 
-### Prerequisites
+Done — one click (or the tray icon) connects, with password and 2FA filled
+automatically. Theme, accent, per-state colours, autostart, notifications, the
+`Ctrl+Alt+P` TOTP hotkey and legal/about info live behind the **Settings**
+button.
 
-`openconnect-sso` and the `openconnect` engine are **not** bundled. The app's
-first‑run checklist can install/locate them for you, or set them up manually:
-
-| Component | Install |
-| --- | --- |
-| **openconnect-sso** (SAML/Keycloak login) | `uv tool install --with PyQt6 --with "setuptools<70" openconnect-sso` |
-| **openconnect engine** | **Windows:** [OpenConnect‑GUI] (ships `openconnect.exe` **and** the Wintun driver) · **Linux:** `apt install openconnect` · **macOS:** `brew install openconnect` |
-
-> The two `--with` pins are required by openconnect-sso 0.8.1: `setuptools<70`
-> (it still imports `pkg_resources`) and `PyQt6` (its browser auth step).
-
-## Desktop app — first run
-
-The app walks you through the prerequisites, then collects your login email,
-password and TOTP seed (stored in the Windows Credential Manager — you can
-also import the seed from a QR‑code image). **Set up** registers a Scheduled
-Task once (the single UAC prompt); after that, **Connect** needs no elevation.
-
-App settings (theme, accent, status colours, autostart, notifications, the
-TOTP hotkey toggle and legal/about info) live under the **Settings** button.
+> **Advanced (no .exe):** install everything via [uv] instead — one line
+> (PowerShell rejects bash `\` continuations):
+> ```powershell
+> uv tool install --with PyQt6 --with "setuptools<70" --with opencv-python-headless --from git+https://github.com/saiko-psych/automatic-openconnect automatic-openconnect
+> ```
+> then run `automatic-vpn`. On **Linux/macOS** (library use) install the
+> engine with `apt install openconnect` / `brew install openconnect` and
+> `openconnect-sso` via uv.
 
 ## Using a different VPN
 
