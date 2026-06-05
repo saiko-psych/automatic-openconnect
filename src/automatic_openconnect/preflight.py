@@ -16,6 +16,7 @@ Checked prerequisites:
 
 from __future__ import annotations
 
+import ntpath
 import os
 from dataclasses import dataclass
 from typing import List, Optional
@@ -61,15 +62,15 @@ def _wintun_present(openconnect_path: str = "") -> bool:
     """Heuristic: is wintun.dll where openconnect can load it? OpenConnect-GUI
     ships it next to openconnect.exe; it may also live in System32/SysWOW64."""
     p = (openconnect_path or "").strip()
-    oc_dir = os.path.dirname(p) if (p and os.path.exists(p)) else ""
+    oc_dir = ntpath.dirname(p) if (p and os.path.exists(p)) else ""
     if not oc_dir:
         d = detect_openconnect()
-        oc_dir = os.path.dirname(d) if d else ""
+        oc_dir = ntpath.dirname(d) if d else ""
     sysroot = os.environ.get("SystemRoot", r"C:\Windows")
     candidates = [
-        os.path.join(oc_dir, "wintun.dll") if oc_dir else "",
-        os.path.join(sysroot, "System32", "wintun.dll"),
-        os.path.join(sysroot, "SysWOW64", "wintun.dll"),
+        ntpath.join(oc_dir, "wintun.dll") if oc_dir else "",
+        ntpath.join(sysroot, "System32", "wintun.dll"),
+        ntpath.join(sysroot, "SysWOW64", "wintun.dll"),
     ]
     return any(c and os.path.exists(c) for c in candidates)
 
@@ -93,13 +94,13 @@ def _vpnc_script_present(openconnect_path: str = "") -> bool:
     """Is openconnect's routing script next to it? OpenConnect-GUI ships
     vpnc-script-win.js; a loose openconnect.exe won't have it."""
     p = (openconnect_path or "").strip()
-    oc_dir = os.path.dirname(p) if (p and os.path.exists(p)) else ""
+    oc_dir = ntpath.dirname(p) if (p and os.path.exists(p)) else ""
     if not oc_dir:
         d = detect_openconnect()
-        oc_dir = os.path.dirname(d) if d else ""
+        oc_dir = ntpath.dirname(d) if d else ""
     if not oc_dir:
         return False
-    return any(os.path.exists(os.path.join(oc_dir, n))
+    return any(os.path.exists(ntpath.join(oc_dir, n))
                for n in ("vpnc-script-win.js", "vpnc-script.js"))
 
 

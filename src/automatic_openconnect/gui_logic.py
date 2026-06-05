@@ -9,6 +9,7 @@ build the config block, and where the binaries live by default.
 
 from __future__ import annotations
 
+import ntpath
 import os
 import shutil
 import sys
@@ -70,12 +71,15 @@ def normalize_openconnect_path(path: str) -> str:
     and, if the result still isn't a real file (stale/empty/invalid path),
     falls back to auto-detection so a bogus config can't break the connection.
     """
+    # Windows paths → use ntpath for the string ops so they behave correctly
+    # regardless of the host OS (tests run on Linux CI). os.path.isdir/isfile
+    # stay the platform's (this path logic only runs on Windows in practice).
     p = (path or "").strip().strip('"')
     cand = p
     if p and os.path.isdir(p):
-        cand = os.path.join(p, "openconnect.exe")
-    elif os.path.basename(p).lower() == "openconnect-gui.exe":
-        cand = os.path.join(os.path.dirname(p), "openconnect.exe")
+        cand = ntpath.join(p, "openconnect.exe")
+    elif ntpath.basename(p).lower() == "openconnect-gui.exe":
+        cand = ntpath.join(ntpath.dirname(p), "openconnect.exe")
     if cand and os.path.isfile(cand):
         return cand
     return detect_openconnect() or p
