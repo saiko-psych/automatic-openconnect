@@ -17,9 +17,10 @@ $env:Path = "$env:USERPROFILE\.local\bin;$env:Path"
 Write-Host "[2/3] Installing openconnect-sso (login helper) ..." -ForegroundColor Cyan
 uv tool install --with PyQt6 --with "setuptools<70" openconnect-sso
 
-Write-Host "[3/3] Opening the OpenConnect-GUI download (install it manually:" `
-            "it provides openconnect.exe + the Wintun driver) ..." -ForegroundColor Cyan
-Start-Process "https://github.com/openconnect/openconnect-gui/releases"
+Write-Host "[3/3] Opening the OpenConnect-GUI download (install it with the" `
+            "official installer: it provides openconnect.exe + DLLs + the" `
+            "routing script + the Wintun driver) ..." -ForegroundColor Cyan
+Start-Process "https://gui.openconnect-vpn.net/download/"
 
 Write-Host ""
 Write-Host "Prereqs (scriptable part) done. Next:" -ForegroundColor Green
