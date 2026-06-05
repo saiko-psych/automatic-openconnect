@@ -72,6 +72,9 @@ _STRINGS: dict[str, dict[str, str]] = {
               "extrahiert:"},
     "setup.totp_help_btn": {"en": "How do I get the seed?",
                             "de": "Wie bekomme ich den Seed?"},
+    "setup.token_slot": {"en": "2FA token (if you have several)",
+                         "de": "2FA-Token (falls du mehrere hast)"},
+    "setup.slot_default": {"en": "Default (first)", "de": "Standard (erstes)"},
     "setup.totp_hotkey": {
         "en": "Type the current 2FA code into any field with {combo}",
         "de": "Aktuellen 2FA-Code per {combo} in jedes Feld eintippen"},

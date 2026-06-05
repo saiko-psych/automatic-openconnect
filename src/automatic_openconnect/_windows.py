@@ -329,7 +329,7 @@ def _authenticate(cfg: dict) -> Tuple[str, str, str]:
         # in the keyring + selectors in config.toml the browser fills
         # itself and closes in ~2 seconds, so it's functionally headless.
         "--browser-display-mode", "shown",
-        "-l", "ERROR",
+        "-l", "INFO",   # INFO so the connect log shows what auth is doing
         "--authenticate",
     ]
     authgroup = cfg.get("authgroup", "")
@@ -338,6 +338,11 @@ def _authenticate(cfg: dict) -> Tuple[str, str, str]:
 
     print("[auto_vpn_win] Authenticating via openconnect-sso ...",
           file=sys.stderr)
+    sys.stderr.flush()
+    # Stream openconnect-sso's own log (stderr) straight into the connect log
+    # so progress/errors are visible live — including when auth stalls at the
+    # 2FA page (e.g. the wrong token tile). stdout is still captured to parse
+    # HOST/COOKIE/FINGERPRINT.
     try:
         result = subprocess.run(
             cmd,
@@ -345,21 +350,24 @@ def _authenticate(cfg: dict) -> Tuple[str, str, str]:
             env=env,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=sys.stderr,
             text=True,
             encoding="utf-8",
             errors="replace",
             timeout=180,
         )
     except subprocess.TimeoutExpired:
-        raise VPNError("openconnect-sso authentication timed out after 180s")
+        raise VPNError(
+            "openconnect-sso authentication timed out after 180s "
+            "(often the 2FA step stalled — see the log above). If you have "
+            "several authenticator tokens, the wrong one may be selected."
+        )
 
     stdout = result.stdout or ""
-    stderr = result.stderr or ""
     if result.returncode != 0:
         raise VPNError(
             f"openconnect-sso failed (exit {result.returncode}). "
-            f"stderr tail:\n{stderr[-500:].strip()}"
+            f"See the connection log above for the openconnect-sso output."
         )
 
     host = cookie = fingerprint = None

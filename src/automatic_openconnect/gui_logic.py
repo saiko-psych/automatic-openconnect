@@ -173,7 +173,8 @@ def parse_services(text: str) -> list:
 def build_auto_vpn_config(*, email: str, server: str, openconnect_path: str,
                           openconnect_sso_path: str,
                           stop_conflicting: bool = True,
-                          conflicting_services: list = None) -> dict:
+                          conflicting_services: list = None,
+                          totp_token_slot: int = 0) -> dict:
     """Build the config.json dict the _windows backend consumes."""
     from ._windows import DEFAULT_CONFLICTING_SERVICES
     services = (conflicting_services if conflicting_services is not None
@@ -187,6 +188,9 @@ def build_auto_vpn_config(*, email: str, server: str, openconnect_path: str,
             "openconnect_sso_path": openconnect_sso_path.strip(),
             "stop_conflicting_services": bool(stop_conflicting),
             "conflicting_services": services,
+            # Which 2FA token tile to select when several are registered
+            # (0 = leave the default selection). See preflight._slot_rule.
+            "totp_token_slot": int(totp_token_slot or 0),
             "down_on_exit": True,
         }
     }

@@ -322,8 +322,10 @@ class PreflightDialog(QDialog):
         if action == "open_download":
             webbrowser.open(preflight.OPENCONNECT_GUI_RELEASES)
         elif action == "create_config":
+            slot = int((cfgmod.load_config().get("auto_vpn") or {})
+                       .get("totp_token_slot", 0) or 0)
             try:
-                p = preflight.create_config_toml()
+                p = preflight.create_config_toml(slot)
                 QMessageBox.information(self, t("config.created_title"),
                                         f"{t('config.created_msg')}\n{p}")
             except OSError as exc:
@@ -519,6 +521,17 @@ class SetupView(QWidget):
         totp_help.addStretch(1)
         form.addRow("", _wrap(totp_help))
 
+        # Which 2FA token tile to pick when several are registered (Keycloak
+        # shows one tile per token and validates against the selected one).
+        self.token_slot = QComboBox()
+        self.token_slot.addItem(t("setup.slot_default"), 0)
+        for n in (1, 2, 3, 4):
+            self.token_slot.addItem(str(n), n)
+        cur_slot = int(existing.get("totp_token_slot", 0) or 0)
+        self.token_slot.setCurrentIndex(cur_slot if 0 <= cur_slot <= 4 else 0)
+        self.token_slot.setMaximumWidth(220)
+        form.addRow(t("setup.token_slot"), self.token_slot)
+
         ui = (cfgmod.load_config().get("ui") or {})
         self.totp_hotkey_cb = QCheckBox(
             t("setup.totp_hotkey").format(combo=totp_hotkey.DEFAULT_HOTKEY_LABEL))
@@ -631,14 +644,24 @@ class SetupView(QWidget):
         # Merge into the existing config so we never clobber the ui block
         # (language, close-on-exit preference) when reconfiguring.
         data = cfgmod.load_config()
+        slot = int(self.token_slot.currentData() or 0)
         data["auto_vpn"] = gl.build_auto_vpn_config(
             email=fields["email"], server=fields["server"],
             openconnect_path=fields["openconnect_path"],
             openconnect_sso_path=fields["openconnect_sso_path"],
             stop_conflicting=self.stop_conflicting.isChecked(),
-            conflicting_services=gl.parse_services(self.services.text()))["auto_vpn"]
+            conflicting_services=gl.parse_services(self.services.text()),
+            totp_token_slot=slot)["auto_vpn"]
         data.setdefault("ui", {})["totp_hotkey"] = self.totp_hotkey_cb.isChecked()
         path = cfgmod.save_config(data)
+
+        # Keep openconnect-sso's config.toml in sync with the chosen token
+        # slot (regenerate it if a slot is set or the file already exists).
+        try:
+            if slot or os.path.exists(preflight.CONFIG_TOML):
+                preflight.create_config_toml(slot)
+        except OSError:
+            pass
 
         # Register the elevated tasks only the first time (the one UAC prompt).
         # When already set up this view is just a config editor, so saving

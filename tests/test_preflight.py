@@ -100,6 +100,17 @@ class TestAutoFixes(unittest.TestCase):
         self.assertIn("univpn.uni-graz.at", content)
         self.assertIn('fill = "totp"', content)
 
+    def test_config_toml_no_slot_by_default(self):
+        toml = preflight.build_config_toml(0)
+        self.assertNotIn("nth-of-type", toml)
+        self.assertIn('fill = "totp"', toml)
+
+    def test_config_toml_with_slot_clicks_tile_before_otp(self):
+        toml = preflight.build_config_toml(2)
+        self.assertIn("label:nth-of-type(2)", toml)
+        # the tile click must come BEFORE the otp fill
+        self.assertLess(toml.index("nth-of-type(2)"), toml.index('fill = "totp"'))
+
     def test_install_sso_command(self):
         with mock.patch("automatic_openconnect.gui_logic.resolve_uv",
                         return_value=["uv"]):

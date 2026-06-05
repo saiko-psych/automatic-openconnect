@@ -3,6 +3,21 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.6] - 2026-06-05
+
+### Added
+- **2FA token slot** setting: when several authenticator tokens are registered,
+  the login page shows one tile per token and validates the code against the
+  *selected* one. Pick which tile (1st / 2nd / …) and the app clicks it before
+  typing the code. Default leaves the first tile selected, so single-token
+  users are unaffected. (Implemented as a position-based click rule in
+  openconnect-sso's `config.toml`, since the tile ids are per-account GUIDs.)
+
+### Changed
+- The login helper's output now **streams live into the connection log**
+  (`openconnect-sso -l INFO`), so a stalled 2FA step is visible instead of the
+  log freezing at "Authenticating …".
+
 ## [0.1.5] - 2026-06-05
 
 ### Fixed

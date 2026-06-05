@@ -154,7 +154,7 @@ def check_credentials(email: Optional[str]) -> Check:
 
 # --- automated fixes ----------------------------------------------------
 
-CONFIG_TOML_TEMPLATE = '''\
+_CONFIG_TOML_HEAD = '''\
 on_disconnect = ""
 
 [default_profile]
@@ -174,7 +174,11 @@ fill = "password"
 [[auto_fill_rules."https://login.uni-graz.at/*"]]
 selector = "input#kc-login"
 action = "click"
+'''
 
+# OTP step (the page with the credential tiles). Comes AFTER the optional
+# tile-selection rule injected by _slot_rule().
+_CONFIG_TOML_OTP = '''
 [[auto_fill_rules."https://login.uni-graz.at/*"]]
 selector = "input[name=otp]"
 fill = "totp"
@@ -193,13 +197,42 @@ action = "stop"
 '''
 
 
-def create_config_toml() -> str:
-    """Write the Uni-Graz openconnect-sso config.toml template (UTF-8, no
-    BOM). Returns the path. Raises OSError on failure."""
+def _slot_rule(token_slot: int) -> str:
+    """Rule to click the chosen 2FA token tile before typing the code.
+
+    Keycloak shows one tile per registered OTP credential (radio buttons with
+    per-account GUID ids, so we select by POSITION) and validates the code
+    against the *selected* one. Only emitted when a slot is configured —
+    single-token users have no selector page, so we must not wait on it.
+    """
+    n = int(token_slot or 0)
+    if n < 1:
+        return ""
+    return (
+        '\n[[auto_fill_rules."https://login.uni-graz.at/*"]]\n'
+        f'selector = ".otp-device--selector label:nth-of-type({n})"\n'
+        'action = "click"\n'
+    )
+
+
+def build_config_toml(token_slot: int = 0) -> str:
+    """The Uni-Graz openconnect-sso config.toml, optionally selecting the
+    Nth 2FA token tile (token_slot >= 1) before entering the code."""
+    return _CONFIG_TOML_HEAD + _slot_rule(token_slot) + _CONFIG_TOML_OTP
+
+
+# Back-compat alias (no tile selection).
+CONFIG_TOML_TEMPLATE = build_config_toml(0)
+
+
+def create_config_toml(token_slot: int = 0) -> str:
+    """Write the openconnect-sso config.toml (UTF-8, no BOM). With
+    token_slot >= 1, the Nth credential tile is auto-selected. Returns the
+    path; raises OSError on failure."""
     path = CONFIG_TOML
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="\n") as f:
-        f.write(CONFIG_TOML_TEMPLATE)
+        f.write(build_config_toml(token_slot))
     return path
 
 

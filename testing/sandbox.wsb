@@ -1,8 +1,12 @@
 <Configuration>
   <!-- Clean-machine test for automatic-vpn.exe in Windows Sandbox.
-       Double-click this file (after enabling the Sandbox feature). The
-       Sandbox is a fresh, disposable Windows with no Python/deps installed —
-       exactly what a new tester's PC looks like. Everything resets on close. -->
+       Double-click this file (NOT "as administrator"). The Sandbox is a
+       fresh, disposable Windows with no Python/deps — exactly what a new
+       tester's PC looks like. Everything resets on close. -->
+  <!-- vGPU disabled: on hybrid-GPU laptops (Intel + NVIDIA) the virtual GPU
+       makes the session drop with "connection lost". Software rendering is
+       slower but stable. -->
+  <VGpu>Disable</VGpu>
   <Networking>Enable</Networking>
   <MappedFolders>
     <MappedFolder>
