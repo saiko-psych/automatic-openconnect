@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.7] - 2026-06-05
+
+### Changed
+- The openconnect prerequisite hint (and the README) now spell out the
+  make-or-break install step: in the OpenConnect-GUI installer, **tick the
+  “command-line / console version” component** — without it only the GUI is
+  installed and the CLI `openconnect.exe` the app needs is missing.
+
 ## [0.1.6] - 2026-06-05
 
 ### Added

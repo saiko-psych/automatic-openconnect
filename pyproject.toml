@@ -16,7 +16,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "automatic-openconnect"
-version = "0.1.6"
+version = "0.1.7"
 description = "Cross-platform headless openconnect-sso automation: bring a Cisco AnyConnect compatible VPN up around your code, with login PW + TOTP seed from the OS keyring. Community tool, not supported by uniIT."
 readme = "README.md"
 license = { text = "MIT" }
