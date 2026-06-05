@@ -171,17 +171,18 @@ _STRINGS: dict[str, dict[str, str]] = {
     "check.credentials": {"en": "Credentials in keyring",
                           "de": "Zugangsdaten im Keyring"},
     "fix.openconnect": {
-        "en": "Install OpenConnect-GUI with the official installer (you only "
-              "install it, you don't launch it). A single loose openconnect.exe "
-              "does NOT work — it needs its DLLs + routing script + the Wintun "
-              "driver, which the installer sets up together. The app then "
+        "en": "Install OpenConnect-GUI with the official installer. IMPORTANT: "
+              "in the installer's components step, TICK the “command-line / "
+              "console version” — that's the openconnect.exe this app needs; "
+              "without it only the GUI is installed and openconnect.exe is "
+              "missing. (You install it, you don't launch it.) The app then "
               "auto-detects it; if not, use “Browse…” in setup.",
-        "de": "OpenConnect-GUI mit dem offiziellen Installer installieren (nur "
-              "installieren, nicht starten). Eine einzelne lose openconnect.exe "
-              "funktioniert NICHT — sie braucht ihre DLLs + das Routing-Script "
-              "+ den Wintun-Treiber, die der Installer zusammen einrichtet. "
-              "Die App erkennt sie danach automatisch; falls nicht, im Setup "
-              "über „Durchsuchen…“."},
+        "de": "OpenConnect-GUI mit dem offiziellen Installer installieren. "
+              "WICHTIG: im Komponenten-Schritt des Installers die „Kommandozeilen-/ "
+              "Konsolen-Version“ ANHAKEN — das ist die openconnect.exe, die die "
+              "App braucht; ohne sie wird nur die GUI installiert und "
+              "openconnect.exe fehlt. (Nur installieren, nicht starten.) Die App "
+              "erkennt sie danach automatisch; sonst im Setup „Durchsuchen…“."},
     "fix.wintun": {
         "en": "wintun.dll wasn't found next to openconnect. It ships with "
               "OpenConnect-GUI — reinstalling it usually fixes this. Only "

@@ -1,0 +1,9 @@
+<Configuration>
+  <!-- Pristine Windows Sandbox for recording the setup video: a clean fresh
+       PC with internet, no mapped folders (so the desktop looks authentic).
+       Download automatic-vpn.exe from the GitHub release inside the sandbox,
+       exactly like a real new user. vGPU disabled (hybrid-GPU laptops drop the
+       connection otherwise). Everything resets on close. -->
+  <VGpu>Disable</VGpu>
+  <Networking>Enable</Networking>
+</Configuration>

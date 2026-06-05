@@ -50,9 +50,12 @@ Download and run the **official installer**:
 **https://gui.openconnect-vpn.net/download/**
 
 > [!IMPORTANT]
-> In the installer, make sure the **command-line / console version**
-> component is **ticked** — that's the CLI `openconnect.exe` the app drives.
-> Without it the GUI is installed but `openconnect.exe` is missing.
+> **The one step everyone misses:** on the installer's components/feature
+> selection page, **tick the “command-line / console version”** before
+> clicking Install. That component *is* the CLI `openconnect.exe` this app
+> drives. If you leave it unchecked, only the graphical client is installed,
+> `openconnect.exe` is missing, and the app's prerequisites check will keep
+> saying openconnect is not found. (You install it; you never open it.)
 
 > Use the **installer**, not a single `openconnect.exe` you found somewhere — a
 > loose exe does **not** work. It needs its DLLs, the routing script and the
