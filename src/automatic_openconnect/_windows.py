@@ -546,6 +546,26 @@ def _terminate_proc(proc: subprocess.Popen) -> None:
         proc.kill()
 
 
+def _kill_stale_processes() -> None:
+    """Kill leftover openconnect-sso (incl. its browser tree) and openconnect
+    from a previously aborted attempt, so a fresh connect starts clean.
+
+    Orphans pile up: a hard-ended up-task leaves its openconnect-sso browser
+    open, and a half-dead openconnect keeps holding the Wintun adapter, which
+    makes the next openconnect fail with 'Failed to register rings'.
+    """
+    if sys.platform != "win32":
+        return
+    for args in (["/F", "/IM", "openconnect-sso.exe", "/T"],
+                 ["/F", "/IM", "openconnect.exe"]):
+        try:
+            subprocess.run(["taskkill", *args], creationflags=_NO_WINDOW,
+                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, timeout=5)
+        except Exception:
+            pass
+
+
 def _stop_tunnel_by_proc(proc: Optional[subprocess.Popen]) -> None:
     """Stop the openconnect.exe instance we spawned."""
     if sys.platform != "win32":
@@ -598,6 +618,9 @@ def auto_vpn_session_win(config_data: dict):
     stopped_services: List[str] = []
 
     if not was_already_up:
+        # Clear any orphaned openconnect-sso browser / stale openconnect from
+        # a previous aborted attempt before starting a fresh one.
+        _kill_stale_processes()
         _check_keyring_credentials(cfg)
         # Stop conflicting VPN services *before* we authenticate, in
         # case Mullvad's routing would have masked the SAML POST.

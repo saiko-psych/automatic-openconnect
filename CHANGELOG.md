@@ -18,6 +18,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
   (`openconnect-sso -l INFO`), so a stalled 2FA step is visible instead of the
   log freezing at "Authenticating …".
 
+### Fixed
+- Before each fresh connect, orphaned **openconnect-sso browser windows** and a
+  **stale openconnect** are cleared — they otherwise pile up ("too many login
+  windows") and a half-dead openconnect keeps the Wintun adapter, making the
+  next attempt fail with "Failed to register rings".
+
 ## [0.1.5] - 2026-06-05
 
 ### Fixed
