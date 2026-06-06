@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.9] - 2026-06-06
+
+### Changed
+- **Prerequisites are now shown inline in the setup form** instead of a
+  separate pop-up dialog. Install openconnect-sso, create the config, and see
+  what's still missing — all in one place, with no jumping back and forth
+  between a checklist and the configuration. (Refactored into a reusable
+  `PrereqPanel`; the standalone check is still reachable from the control
+  view, and the live progress bar/status carry over.)
+
 ## [0.1.8] - 2026-06-05
 
 ### Added

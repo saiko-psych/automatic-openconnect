@@ -240,24 +240,50 @@ _FIX_LABELS = {
 }
 
 
-class PreflightDialog(QDialog):
-    """Prerequisites checklist with one-click fixes where possible."""
+class PrereqPanel(QWidget):
+    """Prerequisites checklist with inline one-click fixes.
 
-    def __init__(self, parent, email, oc_path, sso_path, on_setup=None):
+    Reusable in two places so the install actions live where the user is:
+      * embedded in the setup form (``inline=True``) — the single setup
+        surface, so there's no jump to a separate dialog;
+      * inside :class:`PreflightDialog` (``inline=False``) — the quick check
+        reachable from the control view.
+
+    Reads the current email / openconnect / openconnect-sso values through
+    getter callables, so it stays in sync with the form fields as they're
+    edited or Browsed.
+    """
+
+    def __init__(self, parent, get_email, get_oc, get_sso, *,
+                 inline=False, on_setup=None):
         super().__init__(parent)
-        self._email, self._oc, self._sso = email, oc_path, sso_path
+        self._get_email = get_email
+        self._get_oc = get_oc
+        self._get_sso = get_sso
+        self._inline = inline
         self._on_setup = on_setup
         self._proc = None
-        self.setWindowTitle(t("preflight.title"))
-        self.resize(720, 460)
         self._root = QVBoxLayout(self)
+        self._root.setContentsMargins(0, 0, 0, 0)
         self._rebuild()
-        # Real-time tracking: while the checklist is open, re-check the
-        # prerequisites every few seconds so it reflects reality live (e.g.
-        # after you install a tool or create the config in another window).
+        # Live re-check: reflect reality every few seconds (after an install,
+        # a Browse…, or creating the config) without a manual refresh.
         self._poll = QTimer(self)
         self._poll.timeout.connect(self._tick)
         self._poll.start(2500)
+
+    def _checks(self):
+        checks = preflight.check_all(self._get_email() or None,
+                                     self._get_oc(), self._get_sso())
+        if self._inline:
+            # Credentials are entered in the form right above this panel —
+            # listing them here (with a "Go to setup" jump) is the very
+            # back-and-forth we're removing.
+            checks = [c for c in checks if c.name != "check.credentials"]
+        return checks
+
+    def all_ok(self) -> bool:
+        return preflight.all_ok(self._checks())
 
     def _tick(self):
         if self._proc is None:   # don't clobber an in-progress install view
@@ -272,18 +298,13 @@ class PreflightDialog(QDialog):
 
     def _rebuild(self):
         self._clear()
-        checks = preflight.check_all(self._email or None, self._oc, self._sso)
+        checks = self._checks()
         for c in checks:
             self._root.addWidget(self._row(c))
         foot = QLabel(t("preflight.all_ok") if preflight.all_ok(checks)
                       else t("preflight.todo"))
         foot.setObjectName("subheader")
         self._root.addWidget(foot)
-        self._root.addStretch(1)
-        close_btn = QPushButton(t("preflight.close"))
-        close_btn.setObjectName("primary")
-        close_btn.clicked.connect(self.accept)
-        self._root.addWidget(close_btn)
 
     def _row(self, c) -> QFrame:
         frame = QFrame()
@@ -311,8 +332,9 @@ class PreflightDialog(QDialog):
                 btn.clicked.connect(lambda _, a=c.action, b=None: self._do(a))
                 row.addWidget(btn)
             # For openconnect.exe also offer a direct "Locate…" — covers any
-            # non-standard install location that auto-detection missed.
-            if c.name == "check.openconnect":
+            # non-standard install location auto-detection missed. Inline, the
+            # path field's own Browse… button already does this.
+            if c.name == "check.openconnect" and not self._inline:
                 locate = QPushButton(t("preflight.locate"))
                 locate.setObjectName("ghost")
                 locate.clicked.connect(self._locate_openconnect)
@@ -339,7 +361,6 @@ class PreflightDialog(QDialog):
         elif action == "open_setup":
             if self._on_setup:
                 self._on_setup()
-            self.accept()
 
     def _locate_openconnect(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -349,7 +370,6 @@ class PreflightDialog(QDialog):
             return
         path = gl.normalize_openconnect_path(path)  # gui.exe → openconnect.exe
         # Persist so setup and the backend use it, then re-check live.
-        self._oc = path
         data = cfgmod.load_config()
         data.setdefault("auto_vpn", {})["openconnect_path"] = path
         try:
@@ -446,6 +466,32 @@ class PreflightDialog(QDialog):
                 box.setDetailedText(out[-4000:])  # expandable "Details"
             box.exec()
         self._rebuild()
+
+
+class PreflightDialog(QDialog):
+    """Standalone prerequisites checklist — a thin wrapper hosting a
+    :class:`PrereqPanel` (used by the control view's quick check)."""
+
+    def __init__(self, parent, email, oc_path, sso_path, on_setup=None):
+        super().__init__(parent)
+        self._on_setup = on_setup
+        self.setWindowTitle(t("preflight.title"))
+        self.resize(720, 460)
+        root = QVBoxLayout(self)
+        self.panel = PrereqPanel(self, lambda: email, lambda: oc_path,
+                                 lambda: sso_path, inline=False,
+                                 on_setup=self._go_setup)
+        root.addWidget(self.panel)
+        root.addStretch(1)
+        close_btn = QPushButton(t("preflight.close"))
+        close_btn.setObjectName("primary")
+        close_btn.clicked.connect(self.accept)
+        root.addWidget(close_btn)
+
+    def _go_setup(self):
+        if self._on_setup:
+            self._on_setup()
+        self.accept()
 
 
 def show_preflight_dialog(parent, email: str, oc_path: str, sso_path: str,
@@ -563,10 +609,19 @@ class SetupView(QWidget):
         form.addRow(self.stop_conflicting)
         form.addRow(t("setup.services"), self.services)
 
-        check_btn = QPushButton(t("btn.check_prereqs"))
-        check_btn.setObjectName("ghost")
-        check_btn.clicked.connect(self._check_prereqs)
-        form.addRow(check_btn)
+        # Prerequisites live HERE in the form (Option B): install the login
+        # helper / create the config / see what's missing in one place — no
+        # jump to a separate dialog.
+        prereq_head = QLabel(t("preflight.title"))
+        prereq_head.setStyleSheet("font-weight:600; margin-top:8px;")
+        form.addRow(prereq_head)
+        self.prereq_panel = PrereqPanel(
+            self,
+            get_email=lambda: self.email.text(),
+            get_oc=lambda: self.oc.text(),
+            get_sso=lambda: self.sso.text(),
+            inline=True)
+        form.addRow(self.prereq_panel)
 
         buttons = QHBoxLayout()
         buttons.setContentsMargins(0, 0, 0, 0)
@@ -606,10 +661,6 @@ class SetupView(QWidget):
                 path = gl.normalize_openconnect_path(path)  # gui.exe → cli
             line_edit.setText(path)
             line_edit.setCursorPosition(0)
-
-    def _check_prereqs(self):
-        show_preflight_dialog(self, self.email.text(),
-                              self.oc.text(), self.sso.text())
 
     def _show_totp_help(self):
         QMessageBox.information(self, t("totp.help_title"), t("totp.help_text"))
@@ -1354,17 +1405,10 @@ class MainWindow(QWidget):
         self.stack.setCurrentWidget(self.setup if view == "setup" else self.control)
 
     def _maybe_guide_first_setup(self):
-        if self.stack.currentWidget() is not self.setup:
-            return
-        av = (cfgmod.load_config().get("auto_vpn") or {})
-        checks = preflight.check_all(av.get("user_email") or None,
-                                     av.get("openconnect_path", ""),
-                                     av.get("openconnect_sso_path", ""))
-        if not preflight.all_ok(checks):
-            show_preflight_dialog(self, av.get("user_email", ""),
-                                  av.get("openconnect_path", ""),
-                                  av.get("openconnect_sso_path", ""),
-                                  on_setup=self._show_setup)
+        # Prerequisites are now shown inline in the setup form (PrereqPanel),
+        # so a new user already sees what's missing + the install buttons in
+        # one place — no separate dialog needs to pop up here anymore.
+        return
 
     def _show_control(self):
         # Returning from setup may have toggled the hotkey preference.
