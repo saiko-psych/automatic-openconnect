@@ -65,9 +65,13 @@ def build_register_script(python_exe: str, config_path: str,
         else:
             argline = (f'-m automatic_openconnect._windows {sub} '
                        f'--config "{config_path}"')
+        # Pin the task's working directory to the exe's folder (some setups
+        # otherwise launch it in System32, which can trip a one-file exe).
+        workdir = exe.rsplit("\\", 1)[0] if "\\" in exe else ""
+        wd_arg = f" -WorkingDirectory '{workdir}'" if workdir else ""
         return (
             f"$a = New-ScheduledTaskAction -Execute '{exe}' "
-            f"-Argument '{argline}';\n"
+            f"-Argument '{argline}'{wd_arg};\n"
             f"$p = New-ScheduledTaskPrincipal -UserId $env:USERNAME "
             f"-LogonType Interactive -RunLevel Highest;\n"
             f"$s = New-ScheduledTaskSettingsSet -StartWhenAvailable "

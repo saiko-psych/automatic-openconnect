@@ -186,6 +186,41 @@ def _cmdline_exe(cmdline: str) -> str:
     return s.split(" ", 1)[0]
 
 
+def _stable_exe_path() -> str:
+    """Stable per-user install path for the frozen exe — out of Downloads."""
+    base = os.environ.get("LOCALAPPDATA") or os.path.join(
+        os.path.expanduser("~"), "AppData", "Local")
+    return os.path.join(base, "Programs", "automatic-vpn", "automatic-vpn.exe")
+
+
+def _ensure_stable_exe() -> str:
+    """Copy the frozen exe to a stable Programs dir (out of Downloads) and
+    strip its Mark-of-the-Web, returning that path. The elevated Scheduled Task
+    is registered against this copy: the Task Scheduler launch of the exe from
+    Downloads was observed to silently not start Python, and the download
+    location is also volatile (the user may move/delete it). Returns
+    ``sys.executable`` on dev (not frozen) or on any failure."""
+    if not getattr(sys, "frozen", False):
+        return sys.executable
+    src = sys.executable
+    dst = _stable_exe_path()
+    try:
+        import shutil
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        # (Re)copy if missing or a different size (cheap update check).
+        if (not os.path.isfile(dst)
+                or os.path.getsize(dst) != os.path.getsize(src)):
+            shutil.copy2(src, dst)
+        # Remove the "downloaded from the internet" tag from the copy.
+        try:
+            os.remove(dst + ":Zone.Identifier")
+        except OSError:
+            pass
+        return dst
+    except Exception:
+        return src
+
+
 def _wrap(layout) -> QWidget:
     """Wrap a layout in a QWidget (for QFormLayout.addRow)."""
     w = QWidget()
@@ -753,13 +788,31 @@ class SetupView(QWidget):
             pass
 
         # Register the elevated tasks only the first time (the one UAC prompt).
-        # When already set up this view is just a config editor, so saving
-        # must NOT trigger another admin prompt.
-        already_registered = tw.is_registered()
-        if not already_registered:
+        # The elevated Scheduled Task is registered against a STABLE copy of
+        # the exe in %LOCALAPPDATA%\Programs (out of Downloads): testing showed
+        # the Task Scheduler launch of the exe from Downloads silently fails to
+        # start Python (exit 0, no backend), while the very same exe run
+        # elevated from elsewhere works. The copy also strips the
+        # Mark-of-the-Web and survives the user moving/deleting the download.
+        exe_for_task = _ensure_stable_exe()
+        frozen = getattr(sys, "frozen", False)
+        # Register on first setup, OR re-register if the task points at a
+        # different exe than the stable copy (e.g. it still points to Downloads
+        # from an earlier version, or the app was updated). Re-registering costs
+        # one UAC prompt — only done when the target actually changed.
+        need_register = not tw.is_registered()
+        already_registered = not need_register
+        if already_registered and frozen:
             try:
-                tw.register(sys.executable, str(path),
-                            frozen=getattr(sys, "frozen", False))
+                cur_exe = _cmdline_exe(tw.task_action(tw.TASK_UP) or "")
+                if cur_exe and os.path.normcase(cur_exe) != \
+                        os.path.normcase(exe_for_task):
+                    need_register = True
+            except Exception:
+                pass
+        if need_register:
+            try:
+                tw.register(exe_for_task, str(path), frozen=frozen)
             except Exception as exc:  # VPNError or subprocess failure
                 QMessageBox.critical(self, t("setup.failed"), str(exc))
                 return

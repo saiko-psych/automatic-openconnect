@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.14] - 2026-06-07
+
+### Fixed
+- **Connect that fired the task but never ran the backend (timed out, empty
+  log) on some machines.** Diagnostics traced it to the Task Scheduler
+  launching the exe *from the Downloads folder* never starting Python (the very
+  same exe run elevated from elsewhere worked fine). Setup now copies the app
+  to a stable location (``%LOCALAPPDATA%\Programs\automatic-vpn``), strips
+  the Mark-of-the-Web, and registers the elevated task against that copy with a
+  pinned working directory. **Re-run setup once** (Configuration → Save) to
+  re-register the task to the new location.
+
 ## [0.1.13] - 2026-06-07
 
 ### Changed
