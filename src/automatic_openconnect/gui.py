@@ -203,15 +203,26 @@ def _ensure_stable_exe() -> str:
     if not getattr(sys, "frozen", False):
         return sys.executable
     src = sys.executable
+    exe_dir = os.path.dirname(src)
+    # ONE-FOLDER build: the exe needs its sibling files (_internal/…), so we
+    # can't copy just the exe. The Task-Scheduler-launch failure was the
+    # one-file self-extraction, which one-folder doesn't have — so registering
+    # the task against the exe in place is correct (the folder location no
+    # longer matters). Strip the Mark-of-the-Web from the exe regardless.
+    if os.path.isdir(os.path.join(exe_dir, "_internal")):
+        try:
+            os.remove(src + ":Zone.Identifier")
+        except OSError:
+            pass
+        return src
+    # ONE-FILE build (legacy / fallback): copy out of Downloads + strip MotW.
     dst = _stable_exe_path()
     try:
         import shutil
         os.makedirs(os.path.dirname(dst), exist_ok=True)
-        # (Re)copy if missing or a different size (cheap update check).
         if (not os.path.isfile(dst)
                 or os.path.getsize(dst) != os.path.getsize(src)):
             shutil.copy2(src, dst)
-        # Remove the "downloaded from the internet" tag from the copy.
         try:
             os.remove(dst + ":Zone.Identifier")
         except OSError:

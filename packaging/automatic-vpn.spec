@@ -37,19 +37,32 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
+# ONE-FOLDER build (not one-file). A one-file exe self-extracts to %TEMP% via
+# the PyInstaller bootloader on every launch; when the elevated *Windows Task
+# Scheduler service* launches it, that self-extraction silently fails and
+# Python never starts (the task reports exit 0 but the backend never runs).
+# One-folder ships the exe + its dependencies unpacked in a folder, so the
+# Task Scheduler launches the exe directly — no extraction step to fail.
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name="automatic-vpn",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    runtime_tmpdir=None,
     console=False,          # windowed; CLI mode writes to the connect log
     disable_windowed_traceback=False,
     icon=_icon,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    name="automatic-vpn",
 )

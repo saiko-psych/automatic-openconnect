@@ -3,6 +3,22 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.15] - 2026-06-07
+
+### Fixed
+- **Root-cause fix for "Connect fires the task but the backend never runs"
+  (timed out, empty log) on affected machines.** Proven via launch breadcrumbs:
+  the one-file PyInstaller exe self-extracts to %TEMP% on every launch, and that
+  self-extraction silently fails when the elevated **Windows Task Scheduler
+  service** launches it — so Python never starts (the task still reports exit
+  0). The app is now built **one-folder** (no self-extraction): the Task
+  Scheduler launches the exe directly.
+
+### Changed
+- Distribution is now a **ZIP** (extract, run `automatic-vpn.exe`) instead of a
+  bare exe, since the one-folder build ships the exe with its dependencies. A
+  proper installer will follow.
+
 ## [0.1.14] - 2026-06-07
 
 ### Fixed
