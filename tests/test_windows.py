@@ -364,6 +364,109 @@ class TestConfiguredServiceTargets(unittest.TestCase):
         self.assertEqual(_configured_service_targets({}),
                          ["csc_vpnagent", "MullvadVPN"])
 
+    def test_explicit_empty_list_stops_nothing(self):
+        # BUG: an explicitly-emptied list must mean "stop nothing", not
+        # silently fall back to the Cisco/Mullvad defaults via `... or DEFAULT`.
+        from automatic_openconnect._windows import _configured_service_targets
+        cfg = {"stop_conflicting_services": True, "conflicting_services": []}
+        self.assertEqual(_configured_service_targets(cfg), [])
+
+    def test_explicit_empty_list_with_only_list_key(self):
+        # Even if the bool flag isn't present (defaults True), an explicit []
+        # must still stop nothing.
+        from automatic_openconnect._windows import _configured_service_targets
+        cfg = {"conflicting_services": []}
+        self.assertEqual(_configured_service_targets(cfg), [])
+
+
+class TestConnectLog(unittest.TestCase):
+    """The connect log must never be silently empty — the GUI seeds a
+    preamble, the backend appends, and open failures leave a breadcrumb."""
+
+    def test_connect_log_path_sits_next_to_config(self):
+        import ntpath
+        from automatic_openconnect._windows import connect_log_path
+        p = connect_log_path(ntpath.join("C:\\", "data", "config.json"))
+        self.assertTrue(p.endswith("last-connect.log"))
+
+    def test_append_connect_log_appends(self):
+        import os, tempfile
+        from automatic_openconnect._windows import (
+            append_connect_log, connect_log_path)
+        with tempfile.TemporaryDirectory() as d:
+            cfg = os.path.join(d, "config.json")
+            self.assertTrue(append_connect_log(cfg, "first"))
+            self.assertTrue(append_connect_log(cfg, "second"))
+            with open(connect_log_path(cfg), encoding="utf-8") as f:
+                body = f.read()
+        self.assertEqual(body, "first\nsecond\n")
+
+    def test_append_connect_log_truncate_starts_fresh(self):
+        import os, tempfile
+        from automatic_openconnect._windows import (
+            append_connect_log, connect_log_path)
+        with tempfile.TemporaryDirectory() as d:
+            cfg = os.path.join(d, "config.json")
+            append_connect_log(cfg, "stale line from a previous attempt")
+            self.assertTrue(append_connect_log(cfg, "[gui] firing",
+                                               truncate=True))
+            with open(connect_log_path(cfg), encoding="utf-8") as f:
+                body = f.read()
+        self.assertEqual(body, "[gui] firing\n")
+
+    def test_append_connect_log_returns_false_on_oserror(self):
+        from automatic_openconnect._windows import append_connect_log
+        with mock.patch("automatic_openconnect._windows.open",
+                        side_effect=OSError("denied")):
+            self.assertFalse(append_connect_log("C:\\x\\config.json", "msg"))
+
+    def test_redirect_failure_leaves_breadcrumb(self):
+        # If even the log can't be opened, the failure must be recorded to a
+        # sibling .error file (and never raise).
+        import automatic_openconnect._windows as w
+        calls = {}
+
+        def fake_open(path, mode="r", *a, **k):
+            if str(path).endswith("last-connect.log"):
+                raise OSError("denied")
+            calls["alt"] = str(path)
+            import io
+            return io.StringIO()
+
+        with mock.patch("automatic_openconnect._windows.open",
+                        side_effect=fake_open):
+            w._redirect_output_to_log("C:\\x\\config.json")  # must not raise
+        self.assertTrue(calls.get("alt", "").endswith("last-connect.error"))
+
+    def test_cli_up_logs_first_line_before_loading_config(self):
+        # The very first backend line must be written even if config loading
+        # fails afterwards — so an empty log unambiguously means "never ran".
+        import automatic_openconnect._windows as w
+        written = []
+
+        class Sink:
+            def write(self, s):
+                written.append(s)
+
+            def flush(self):
+                pass
+
+        def fake_redirect(_path):
+            sys.stdout = sys.stderr = Sink()
+
+        args = mock.Mock(config="C:\\x\\config.json")
+        saved_out, saved_err = sys.stdout, sys.stderr
+        try:
+            with mock.patch.object(w, "_redirect_output_to_log",
+                                   side_effect=fake_redirect), \
+                 mock.patch.object(w, "_load_config",
+                                   side_effect=OSError("no config")):
+                with self.assertRaises(OSError):
+                    w._cli_up(args)
+        finally:
+            sys.stdout, sys.stderr = saved_out, saved_err
+        self.assertTrue(any("bringing tunnel up" in s for s in written))
+
 
 if __name__ == "__main__":
     unittest.main()

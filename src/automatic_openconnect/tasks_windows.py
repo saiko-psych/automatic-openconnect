@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import base64
 import subprocess
-from typing import List
+from typing import List, Optional
 
 from .core import VPNError
 
@@ -170,3 +170,74 @@ def run(task: str) -> None:
             "Is setup complete? "
             f"stderr: {(result.stderr or '').strip()[-300:]}"
         )
+
+
+# schtasks reports an instance that is still running with this "Last Result"
+# code. It is NOT a failure — the up-task is meant to block forever holding
+# the tunnel, so this is the expected value while a connect is in progress.
+TASK_STILL_RUNNING = 0x41301  # 267009
+
+
+def parse_last_result(query_output: str) -> Optional[int]:
+    """Parse the task's last-run exit code from ``schtasks /query /v /fo LIST``.
+
+    Returns the integer code, or ``None`` if the line could not be found /
+    parsed. Handles both the English ("Last Result") and German ("Letztes
+    Ergebnis") labels, and both decimal and ``0x``-hex value formats — schtasks
+    localises the label and may render the code either way depending on the
+    Windows UI language.
+    """
+    for raw in (query_output or "").splitlines():
+        if ":" not in raw:
+            continue
+        label, _, value = raw.partition(":")
+        label = label.strip().lower()
+        if not ("last result" in label or "letztes ergebnis" in label):
+            continue
+        token = value.strip().split()[0] if value.strip() else ""
+        if not token:
+            return None
+        try:
+            if token.lower().startswith("0x"):
+                return int(token, 16)
+            return int(token)
+        except ValueError:
+            return None
+    return None
+
+
+def last_run_result(task: str) -> Optional[int]:
+    """Query a task's last-run exit code via ``schtasks /query /v /fo LIST``.
+
+    No elevation. Returns the parsed integer code, or ``None`` if schtasks is
+    unavailable / the query failed / the code could not be parsed. Best-effort
+    diagnostics helper — callers must tolerate ``None``.
+    """
+    try:
+        result = subprocess.run(
+            ["schtasks", "/query", "/tn", task, "/v", "/fo", "LIST"],
+            creationflags=_NO_WINDOW,
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
+            errors="replace", timeout=10,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    return parse_last_result(result.stdout or "")
+
+
+def describe_last_result(code: Optional[int]) -> str:
+    """Human-readable hint for a task's last-run result code.
+
+    Used to surface why a fired task produced no output. Keeps the mapping in
+    one place so the GUI status line and the connect-log diagnostic agree.
+    """
+    if code is None:
+        return "could not read the task's last-run result"
+    if code == 0:
+        return "task reported success (exit 0)"
+    if code == TASK_STILL_RUNNING:
+        return "task is still running"
+    return f"task failed with code 0x{code & 0xFFFFFFFF:08X} ({code})"

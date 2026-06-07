@@ -134,3 +134,69 @@ class TestRegister(unittest.TestCase):
             run.return_value = subprocess.CompletedProcess([], 1, "", "cancelled")
             with self.assertRaises(VPNError):
                 tw.register(r"C:\py.exe", r"C:\cfg.json")
+
+
+class TestParseLastResult(unittest.TestCase):
+    """Parsing the 'Last Result' code out of `schtasks /query /v /fo LIST`."""
+
+    def test_english_decimal(self):
+        out = ("TaskName: \\AutoOpenconnect-Up\n"
+               "Status: Ready\n"
+               "Last Result: 1\n")
+        self.assertEqual(tw.parse_last_result(out), 1)
+
+    def test_english_hex(self):
+        out = "Last Result: 0x80070002\n"
+        self.assertEqual(tw.parse_last_result(out), 0x80070002)
+
+    def test_german_label(self):
+        out = "Letztes Ergebnis: 267009\n"
+        self.assertEqual(tw.parse_last_result(out), tw.TASK_STILL_RUNNING)
+
+    def test_success_zero(self):
+        self.assertEqual(tw.parse_last_result("Last Result: 0\n"), 0)
+
+    def test_missing_returns_none(self):
+        self.assertIsNone(tw.parse_last_result("Status: Ready\n"))
+
+    def test_unparsable_value_returns_none(self):
+        self.assertIsNone(tw.parse_last_result("Last Result: N/A\n"))
+
+
+class TestLastRunResult(unittest.TestCase):
+    def test_queries_schtasks_verbose_list(self):
+        with mock.patch("automatic_openconnect.tasks_windows.subprocess.run") as run:
+            run.return_value = subprocess.CompletedProcess(
+                [], 0, "Last Result: 0\n", "")
+            self.assertEqual(tw.last_run_result(tw.TASK_UP), 0)
+            args = run.call_args[0][0]
+            self.assertEqual(args[:3], ["schtasks", "/query", "/tn"])
+            self.assertIn("/v", args)
+            self.assertIn("LIST", args)
+
+    def test_none_when_query_fails(self):
+        with mock.patch("automatic_openconnect.tasks_windows.subprocess.run") as run:
+            run.return_value = subprocess.CompletedProcess([], 1, "", "")
+            self.assertIsNone(tw.last_run_result(tw.TASK_UP))
+
+    def test_none_when_schtasks_missing(self):
+        with mock.patch("automatic_openconnect.tasks_windows.subprocess.run",
+                        side_effect=FileNotFoundError()):
+            self.assertIsNone(tw.last_run_result(tw.TASK_UP))
+
+
+class TestDescribeLastResult(unittest.TestCase):
+    def test_none(self):
+        self.assertIn("could not read", tw.describe_last_result(None).lower())
+
+    def test_zero_is_success(self):
+        self.assertIn("success", tw.describe_last_result(0).lower())
+
+    def test_still_running(self):
+        self.assertIn("still running",
+                      tw.describe_last_result(tw.TASK_STILL_RUNNING).lower())
+
+    def test_failure_shows_hex_code(self):
+        msg = tw.describe_last_result(0x80070002)
+        self.assertIn("0x80070002", msg)
+        self.assertIn("failed", msg.lower())

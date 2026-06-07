@@ -39,7 +39,7 @@ from . import autostart
 from . import session
 from . import tasks_windows as tw
 from . import totp_hotkey
-from ._windows import is_vpn_up, connect_log_path
+from ._windows import is_vpn_up, connect_log_path, append_connect_log
 from .secrets import (get_uni_login_password, get_uni_totp_secret,
                       set_uni_login_password, set_uni_totp_secret)
 
@@ -552,8 +552,12 @@ class SetupView(QWidget):
         _add_reveal_eye(self.totp)
 
         from ._windows import DEFAULT_CONFLICTING_SERVICES
-        services = (existing.get("conflicting_services")
-                    or list(DEFAULT_CONFLICTING_SERVICES))
+        # `is None` (not `or`) so an explicitly-emptied list survives a reload:
+        # `[] or default` is truthy-default, which would silently resurrect the
+        # defaults the user just removed and could never persist an empty list.
+        stored_services = existing.get("conflicting_services")
+        services = (list(DEFAULT_CONFLICTING_SERVICES)
+                    if stored_services is None else stored_services)
         self.stop_conflicting = QCheckBox(t("setup.stop_conflicting"))
         self.stop_conflicting.setChecked(
             existing.get("stop_conflicting_services", True))
@@ -853,6 +857,45 @@ class ControlView(QWidget):
         except OSError:
             return ""
 
+    def _diagnose_timeout(self) -> None:
+        """On connect timeout, append a clear diagnostic to the log.
+
+        The tunnel never came up within the window. Distinguish the two
+        failure shapes so the user (and we, remotely) can tell them apart:
+          * the backend never wrote anything past the GUI preamble → the task
+            fired but the process never really ran (or died instantly); report
+            the task's last-run result code,
+          * the backend logged work but stalled → it ran but did not finish in
+            time (slow SAML/2FA, route config), so leave a softer hint.
+        Best-effort; never raises (it runs from the status-poll timer).
+        """
+        try:
+            cfg_path = str(cfgmod.config_path())
+            log = self._read_log()
+            # Did the backend produce any of ITS OWN output, or only our
+            # GUI-written preamble lines?
+            backend_ran = "[auto_vpn_win]" in log or "[openconnect]" in log
+            try:
+                code = tw.last_run_result(tw.TASK_UP)
+            except Exception:
+                code = None
+            if not backend_ran:
+                append_connect_log(
+                    cfg_path,
+                    f"[gui] timed out with no backend output — "
+                    f"{tw.describe_last_result(code)}. The Scheduled Task fired "
+                    "but the VPN backend never ran. Likely causes: the task "
+                    "action/arguments are wrong for this build, the app exe "
+                    "moved, or a stale 'running' instance blocked the new run.")
+            else:
+                append_connect_log(
+                    cfg_path,
+                    "[gui] timed out — the backend started but did not finish "
+                    "bringing the tunnel up in time (often a slow SAML/2FA "
+                    "login or route setup). See the lines above.")
+        except Exception:
+            pass
+
     def refresh(self):
         up = is_vpn_up()
         if up:
@@ -872,6 +915,7 @@ class ControlView(QWidget):
                 self._failed = True
                 self._set_dot(_state_color("error"))
                 self.status.setText(t("status.timeout_log"))
+                self._diagnose_timeout()
             else:
                 self._set_dot(_state_color("connecting"))
                 self.status.setText(t(step))
@@ -920,7 +964,40 @@ class ControlView(QWidget):
             # owning GUI from the first moment.
             session.write_heartbeat(time.time(), background_ok=False)
             tw.end(tw.TASK_UP)   # clear any stale blocking instance first
+            # Preamble (truncating) BEFORE firing the task so the connect log
+            # is NEVER empty: if the task fires but the backend never executes
+            # (wrong action/args, blocked exe, swallowed IgnoreNew run) the log
+            # still proves the GUI got this far. The GUI can always write here
+            # — it writes config.json into the same %PROGRAMDATA% folder. If
+            # even this write fails, the log path itself is non-writable, which
+            # is itself the diagnosis, so we surface it.
+            cfg_path = str(cfgmod.config_path())
+            stamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            log_ok = append_connect_log(
+                cfg_path,
+                f"[gui] {stamp} firing {tw.TASK_UP} via schtasks /run …",
+                truncate=True)
+            if not log_ok:
+                append_connect_log(  # best-effort; may also fail (then ignored)
+                    cfg_path,
+                    "[gui] WARNING: could not write the connect log — the log "
+                    "path may not be writable.")
             tw.run(tw.TASK_UP)
+            # The /run returned 0, but that only means schtasks ACCEPTED the
+            # request — it does not mean the backend ran. Query the task's
+            # last-run result and, if it already shows a hard failure (not the
+            # 'still running' 0x41301 code), record it so an empty/short log is
+            # explained instead of just timing out.
+            try:
+                code = tw.last_run_result(tw.TASK_UP)
+                if code not in (None, 0, tw.TASK_STILL_RUNNING):
+                    append_connect_log(
+                        cfg_path,
+                        f"[gui] {tw.describe_last_result(code)} — the task "
+                        "fired but the backend did not run. Check the task "
+                        "action/arguments and that the app exe is reachable.")
+            except Exception:
+                pass  # diagnostics must never break a connect
             self._connecting = _CONNECT_TIMEOUT_TICKS
             self._failed = False
             self._set_dot(_state_color("connecting"))

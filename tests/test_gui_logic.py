@@ -74,6 +74,14 @@ class TestBuildAutoVpnConfig(unittest.TestCase):
             openconnect_sso_path="b")
         self.assertIn("csc_vpnagent", cfg["auto_vpn"]["conflicting_services"])
 
+    def test_explicit_empty_list_is_preserved(self):
+        # BUG: removing all services then saving must persist an empty list,
+        # NOT silently fall back to the defaults (the `is not None` guard).
+        cfg = gl.build_auto_vpn_config(
+            email="x", server="s", openconnect_path="a",
+            openconnect_sso_path="b", conflicting_services=[])
+        self.assertEqual(cfg["auto_vpn"]["conflicting_services"], [])
+
 
 class TestParseServices(unittest.TestCase):
     def test_comma_and_space(self):

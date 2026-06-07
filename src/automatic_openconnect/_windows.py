@@ -229,8 +229,12 @@ def _configured_service_targets(cfg: dict) -> List[str]:
     if "conflicting_services" in cfg or "stop_conflicting_services" in cfg:
         if not cfg.get("stop_conflicting_services", True):
             return []
-        return [s for s in (cfg.get("conflicting_services")
-                            or DEFAULT_CONFLICTING_SERVICES) if s]
+        # `is None` (not `or`) so an explicitly-emptied list means "stop
+        # nothing", instead of silently resurrecting the Cisco/Mullvad
+        # defaults the user deliberately removed.
+        stored = cfg.get("conflicting_services")
+        targets = (DEFAULT_CONFLICTING_SERVICES if stored is None else stored)
+        return [s for s in targets if s]
     # legacy per-service flags
     targets = []
     if cfg.get("stop_cisco_during_run", True):
@@ -682,24 +686,80 @@ def connect_log_path(config_path: str) -> str:
     return str(Path(config_path).parent / "last-connect.log")
 
 
+def append_connect_log(config_path: str, message: str,
+                       truncate: bool = False) -> bool:
+    """Write a single line to the connect log. Best-effort, never raises.
+
+    Used by the (non-elevated) GUI to drop a preamble line right before it
+    fires the up-task — so the log is *never* empty even if the task itself
+    never executes/writes. The GUI already writes config.json into this same
+    %PROGRAMDATA% folder, so it has write access here too.
+
+    ``truncate=True`` opens the log fresh (use for the FIRST preamble line of a
+    connect attempt, so each attempt starts clean); otherwise it appends. The
+    backend's :func:`_redirect_output_to_log` then appends, preserving the
+    preamble. Returns True if the line was written, False otherwise (so the GUI
+    can decide whether to warn the user about a non-writable log path).
+    """
+    try:
+        with open(connect_log_path(config_path), "w" if truncate else "a",
+                  encoding="utf-8", errors="replace") as log:
+            log.write(message.rstrip("\n") + "\n")
+        return True
+    except OSError:
+        return False
+
+
 def _redirect_output_to_log(config_path: str) -> None:
     """Tee stdout+stderr to the connect log. Best-effort (a windowless
-    task has nowhere else for the output to go)."""
+    task has nowhere else for the output to go).
+
+    Opens in APPEND mode so a preamble the GUI wrote right before firing the
+    task survives (it is the only breadcrumb if the task itself never reaches
+    here). If opening the log fails, we record that fact via a fallback file
+    next to it AND keep the original stderr, so the failure is never silent.
+    """
     try:
-        log = open(connect_log_path(config_path), "w",
+        log = open(connect_log_path(config_path), "a",
                    encoding="utf-8", buffering=1)
         sys.stdout = log
         sys.stderr = log
+    except OSError as exc:
+        _record_redirect_failure(config_path, exc)
+
+
+def _record_redirect_failure(config_path: str, exc: BaseException) -> None:
+    """Leave a breadcrumb when we could not open the connect log itself.
+
+    If even the log can't be opened (permissions / path), try a sibling
+    ``last-connect.error`` file and the original stderr so the failure is
+    reachable somewhere instead of vanishing. Best-effort; never raises.
+    """
+    msg = (f"[auto_vpn_win] FAIL: could not open connect log "
+           f"{connect_log_path(config_path)!r}: {exc}")
+    try:
+        from pathlib import Path
+        alt = Path(config_path).parent / "last-connect.error"
+        with open(alt, "a", encoding="utf-8", errors="replace") as f:
+            f.write(msg + "\n")
     except OSError:
+        pass
+    try:
+        print(msg, file=sys.__stderr__)
+    except Exception:
         pass
 
 
 def _cli_up(args) -> int:
+    # First line as EARLY as possible so an empty log unambiguously means the
+    # backend process never started (vs. crashed mid-setup, which leaves a
+    # traceback). Written before _load_config so a malformed config still logs.
     _redirect_output_to_log(args.config)
+    print("[auto_vpn_win] CLI mode: bringing tunnel up", file=sys.stderr)
+    sys.stderr.flush()
     cfg = _load_config(args.config)
     cfg.setdefault("auto_vpn", {})
     cfg["auto_vpn"]["enabled"] = True
-    print("[auto_vpn_win] CLI mode: bringing tunnel up", file=sys.stderr)
     from . import session
     try:
         with auto_vpn_session_win(cfg):
