@@ -1541,15 +1541,18 @@ class MainWindow(QWidget):
 
 
 def _app_version() -> str:
-    """Version string for the About box. Tries installed package metadata,
-    then the bundled ``__version__`` (the frozen exe carries no dist-info)."""
+    """Version string for the About box. Prefer the in-source ``__version__``
+    — it's the single source of truth and is always correct, both in a dev
+    checkout and in the frozen exe. Installed-package metadata is only a last
+    resort: an editable install (or a stale build venv) keeps the version it
+    was first installed at, which would show an outdated number here."""
     try:
-        from importlib.metadata import version
-        return version("automatic-openconnect")
+        import automatic_openconnect
+        return automatic_openconnect.__version__
     except Exception:
         try:
-            import automatic_openconnect
-            return automatic_openconnect.__version__
+            from importlib.metadata import version
+            return version("automatic-openconnect")
         except Exception:
             return "dev"
 

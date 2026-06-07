@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.10] - 2026-06-07
+
+### Fixed
+- **Settings → About now always shows the real build version.** It reads the
+  in-source `__version__` first; previously it preferred installed-package
+  metadata, which could be stale (an editable/long-lived install keeps the
+  version it was first installed at).
+
 ## [0.1.9] - 2026-06-06
 
 ### Changed
