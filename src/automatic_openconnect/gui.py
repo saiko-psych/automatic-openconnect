@@ -1420,6 +1420,16 @@ class _Backdrop(QWidget):
         self._t += 1.0
         self.update()
 
+    def pause(self):
+        """Stop animating (window minimised / hidden to tray) → 0% CPU while
+        idle, which is the app's normal state."""
+        self._timer.stop()
+
+    def resume(self):
+        """Resume animating, but only if a scene is active."""
+        if self._scene and not self._timer.isActive():
+            self._timer.start(66)
+
     def paintEvent(self, _e):
         if not self._scene:
             return
@@ -1810,6 +1820,21 @@ class MainWindow(QWidget):
         super().showEvent(e)
         self._backdrop.setGeometry(0, 0, self.width(), self.height())
         self._backdrop.lower()
+        self._backdrop.resume()   # animate only while actually shown
+
+    def hideEvent(self, e):
+        super().hideEvent(e)
+        self._backdrop.pause()    # hidden to tray → stop animating (0% CPU)
+
+    def changeEvent(self, e):
+        super().changeEvent(e)
+        # Pause the animated backdrop while minimised; resume when restored.
+        from PyQt6.QtCore import QEvent
+        if e.type() == QEvent.Type.WindowStateChange:
+            if self.windowState() & Qt.WindowState.WindowMinimized:
+                self._backdrop.pause()
+            else:
+                self._backdrop.resume()
 
     # --- system tray ----------------------------------------------------
 
