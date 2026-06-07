@@ -318,6 +318,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     "settings.theme": {"en": "Theme", "de": "Design"},
     "settings.theme_dark": {"en": "Dark", "de": "Dunkel"},
     "settings.theme_light": {"en": "Light", "de": "Hell"},
+    "settings.theme_terminal": {"en": "Terminal (CRT)", "de": "Terminal (CRT)"},
     "settings.accent": {"en": "Accent colour", "de": "Akzentfarbe"},
     "settings.sec_status": {"en": "Status colours", "de": "Statusfarben"},
     "settings.state_connected": {"en": "Connected", "de": "Verbunden"},

@@ -17,6 +17,7 @@ import sys
 
 import importlib.resources as _ir
 import os
+import re
 import time
 import webbrowser
 
@@ -82,28 +83,46 @@ DEFAULT_ACCENT = "blue"
 
 # Light / dark palettes. Every colour the stylesheet needs comes from here so
 # a theme is just a swap of this dict.
+_SANS = "'Segoe UI', sans-serif"
+_MONO = "'Cascadia Mono', 'Consolas', 'DejaVu Sans Mono', monospace"
+
 _PALETTES = {
     "dark": {
         "BG": "#1e1f22", "FG": "#e6e6e6", "SUB": "#9a9da3", "HEADER": "#ffffff",
         "PANEL": "#2b2d31", "BORDER": "#3a3d42", "HOVER": "#34373c",
         "DISFG": "#6b6e73", "DISBG": "#232427", "INDBORDER": "#5a5d63",
         "POPUPSEL": "#3a3d42", "LOGBG": "#141517",
+        "FONT": _SANS, "PRIMARY_FG": "#ffffff",
     },
     "light": {
         "BG": "#f4f5f7", "FG": "#1c1d20", "SUB": "#5c5f66", "HEADER": "#101114",
         "PANEL": "#ffffff", "BORDER": "#cdd0d6", "HOVER": "#e8eaed",
         "DISFG": "#a3a6ac", "DISBG": "#e9eaec", "INDBORDER": "#aab0b8",
         "POPUPSEL": "#dfe2e7", "LOGBG": "#ffffff",
+        "FONT": _SANS, "PRIMARY_FG": "#ffffff",
+    },
+    # Terminal / CRT: phosphor green on near-black, monospace, square corners
+    # (the radius is zeroed in _build_stylesheet). Fits a tool that drives a
+    # command-line VPN client. Accent is forced to phosphor green for cohesion.
+    "terminal": {
+        "BG": "#0a0f0a", "FG": "#74e792", "SUB": "#3f8a55", "HEADER": "#aaffc6",
+        "PANEL": "#0f160f", "BORDER": "#1f3d29", "HOVER": "#15241a",
+        "DISFG": "#2f5a3c", "DISBG": "#0c120c", "INDBORDER": "#2c5036",
+        "POPUPSEL": "#1f3d29", "LOGBG": "#060906",
+        "FONT": _MONO, "PRIMARY_FG": "#04140a",
     },
 }
 DEFAULT_THEME = "dark"
+_TERMINAL_ACCENT = ("#33ff66", "#28cc52")   # phosphor green base, hover
 
-# Current accent — used to tint action icons (the stylesheet handles the rest).
+# Current accent + theme — used to tint action icons (the stylesheet handles
+# the rest). Terminal theme tints icons phosphor green regardless of accent.
 _CURRENT_ACCENT = DEFAULT_ACCENT
+_CURRENT_THEME = DEFAULT_THEME
 
 _STYLESHEET_TMPL = """
 QWidget { background-color: @BG@; color: @FG@;
-          font-family: 'Segoe UI', sans-serif; font-size: 13px; }
+          font-family: @FONT@; font-size: 13px; }
 QLabel#header { font-size: 22px; font-weight: 600; color: @HEADER@; }
 QLabel#subheader { color: @SUB@; font-size: 12px; }
 QLabel#sectionTitle { color: @HEADER@; font-weight: 600; font-size: 14px; }
@@ -116,7 +135,7 @@ QPushButton:hover { background-color: @HOVER@; }
 QPushButton:disabled { color: @DISFG@; background-color: @DISBG@;
                        border-color: @BORDER@; }
 QPushButton#primary { background-color: @ACCENT@; border: none;
-                      color: #ffffff; font-weight: 600; font-size: 15px; }
+                      color: @PRIMARY_FG@; font-weight: 600; font-size: 15px; }
 QPushButton#primary:hover { background-color: @ACCENT_HOVER@; }
 QPushButton#primary:disabled { background-color: @DISBG@; color: @DISFG@; }
 QPushButton#ghost { background-color: transparent; color: @FG@; }
@@ -164,13 +183,19 @@ def _asset_url(name: str) -> str:
 def _build_stylesheet(accent: str = DEFAULT_ACCENT,
                       theme: str = DEFAULT_THEME) -> str:
     pal = _PALETTES.get(theme, _PALETTES[DEFAULT_THEME])
-    base, hover = _ACCENTS.get(accent, _ACCENTS[DEFAULT_ACCENT])
+    if theme == "terminal":
+        base, hover = _TERMINAL_ACCENT   # phosphor green, ignore the accent pick
+    else:
+        base, hover = _ACCENTS.get(accent, _ACCENTS[DEFAULT_ACCENT])
     s = _STYLESHEET_TMPL
     for key, value in pal.items():
         s = s.replace(f"@{key}@", value)
     s = s.replace("@ACCENT_HOVER@", hover).replace("@ACCENT@", base)
     s = s.replace("@CHEVRON@", _asset_url("chevron"))
     s = s.replace("@CHECK@", _asset_url("check"))
+    if theme == "terminal":
+        # Square everything for the CRT/terminal look.
+        s = re.sub(r"border-radius:\s*\d+px", "border-radius: 0px", s)
     return s
 
 
@@ -194,7 +219,10 @@ def _accent_icon(name: str) -> QIcon:
     """Bundled monochrome PNG recoloured to the current accent, so the action
     icons match the theme (and stay visible in both light and dark mode)."""
     from PyQt6.QtGui import QColor, QPainter, QPixmap
-    base = _ACCENTS.get(_CURRENT_ACCENT, _ACCENTS[DEFAULT_ACCENT])[0]
+    if _CURRENT_THEME == "terminal":
+        base = _TERMINAL_ACCENT[0]   # phosphor green, matches the CRT theme
+    else:
+        base = _ACCENTS.get(_CURRENT_ACCENT, _ACCENTS[DEFAULT_ACCENT])[0]
     try:
         p = _ir.files("automatic_openconnect") / "assets" / f"{name}.png"
         pix = QPixmap(str(p))
@@ -1016,9 +1044,10 @@ class SettingsView(QWidget):
         # --- Appearance -----------------------------------------------
         root.addWidget(self._section(t("settings.sec_appearance")))
         self.theme = QComboBox()
-        self._theme_keys = ["dark", "light"]
+        self._theme_keys = ["dark", "light", "terminal"]
         self.theme.addItem(t("settings.theme_dark"))
         self.theme.addItem(t("settings.theme_light"))
+        self.theme.addItem(t("settings.theme_terminal"))
         cur_theme = ui.get("theme", DEFAULT_THEME)
         self.theme.setCurrentIndex(self._theme_keys.index(cur_theme)
                                    if cur_theme in self._theme_keys else 0)
@@ -1391,13 +1420,13 @@ class MainWindow(QWidget):
     def _on_appearance_changed(self):
         """Theme or accent changed in Settings: restyle the app live and
         rebuild the views so the accent-tinted icons update too."""
-        global _CURRENT_ACCENT
+        global _CURRENT_ACCENT, _CURRENT_THEME
         ui = cfgmod.load_config().get("ui") or {}
         _CURRENT_ACCENT = ui.get("accent", DEFAULT_ACCENT)
+        _CURRENT_THEME = ui.get("theme", DEFAULT_THEME)
         app = QApplication.instance()
         if app is not None:
-            app.setStyleSheet(_build_stylesheet(
-                _CURRENT_ACCENT, ui.get("theme", DEFAULT_THEME)))
+            app.setStyleSheet(_build_stylesheet(_CURRENT_ACCENT, _CURRENT_THEME))
         self._rebuild_views("settings")
 
     def _route(self):
@@ -1616,14 +1645,14 @@ def run() -> int:
 
 
 def main() -> int:
-    global _CURRENT_ACCENT
+    global _CURRENT_ACCENT, _CURRENT_THEME
     ui = (cfgmod.load_config().get("ui") or {})
     # Pick up the saved UI language (default English) before building widgets.
     i18n.set_lang(ui.get("lang", "en"))
     _CURRENT_ACCENT = ui.get("accent", DEFAULT_ACCENT)
+    _CURRENT_THEME = ui.get("theme", DEFAULT_THEME)
     app = QApplication(sys.argv)
-    app.setStyleSheet(_build_stylesheet(ui.get("accent", DEFAULT_ACCENT),
-                                        ui.get("theme", DEFAULT_THEME)))
+    app.setStyleSheet(_build_stylesheet(_CURRENT_ACCENT, _CURRENT_THEME))
     # Keep the app alive when the window is closed — the tray icon controls
     # it. Real exit happens via the tray's "Beenden".
     app.setQuitOnLastWindowClosed(False)
