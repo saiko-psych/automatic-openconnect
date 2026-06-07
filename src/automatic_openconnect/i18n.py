@@ -327,6 +327,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     "settings.theme_y2k": {"en": "Y2K (2000s web)", "de": "Y2K (2000er-Web)"},
     "settings.theme_kawaii": {"en": "Kawaii (anime)", "de": "Kawaii (Anime)"},
     "settings.theme_vaporwave": {"en": "Vaporwave", "de": "Vaporwave"},
+    "settings.theme_pixel": {"en": "Pixel (Game Boy)", "de": "Pixel (Game Boy)"},
     "settings.accent": {"en": "Accent colour", "de": "Akzentfarbe"},
     "settings.sec_status": {"en": "Status colours", "de": "Statusfarben"},
     "settings.state_connected": {"en": "Connected", "de": "Verbunden"},

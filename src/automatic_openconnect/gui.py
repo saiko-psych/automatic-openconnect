@@ -1197,7 +1197,8 @@ class SettingsView(QWidget):
         root.addWidget(self._section(t("settings.sec_appearance")))
         self.theme = QComboBox()
         self._theme_keys = ["dark", "light", "nord", "plum", "solarized",
-                            "sand", "terminal", "y2k", "kawaii", "vaporwave"]
+                            "sand", "terminal", "y2k", "kawaii", "vaporwave",
+                            "pixel"]
         for _tk in self._theme_keys:
             self.theme.addItem(t(f"settings.theme_{_tk}"))
         cur_theme = ui.get("theme", DEFAULT_THEME)
@@ -1446,43 +1447,95 @@ class _Backdrop(QWidget):
 
     # --- scenes ----------------------------------------------------------
 
-    def _scene_grid(self, p):       # vaporwave: synth sun + perspective grid
-        from PyQt6.QtGui import QColor, QRadialGradient, QPen
+    def _scene_grid(self, p):       # vaporwave: neon sun, mountains + grid
+        from PyQt6.QtGui import (QColor, QRadialGradient, QLinearGradient,
+                                 QPen, QPainterPath, QBrush)
         import math
         w, h = self.width(), self.height()
-        p.fillRect(self.rect(), self._vgrad("#2a1a45", "#0e0a1e"))
-        horizon = int(h * 0.56)
-        # sun
-        r = max(60, int(w * 0.16))
-        cx, cy = w // 2, horizon
-        sun = QRadialGradient(cx, cy, r)
-        sun.setColorAt(0.0, QColor("#ffe66d"))
-        sun.setColorAt(0.6, QColor("#ff6ec7"))
-        sun.setColorAt(1.0, QColor("#b14bd8"))
+        horizon = int(h * 0.58)
+        # --- sky: deep indigo → magenta dusk -----------------------------
+        sky = QLinearGradient(0, 0, 0, horizon)
+        sky.setColorAt(0.0, QColor("#1a0b2e"))
+        sky.setColorAt(0.55, QColor("#3b1259"))
+        sky.setColorAt(1.0, QColor("#a01f7a"))
+        p.fillRect(0, 0, w, horizon, QBrush(sky))
+        p.fillRect(0, horizon, w, h - horizon, QColor("#0c0718"))
         p.setPen(Qt.PenStyle.NoPen)
+        # --- twinkling stars (upper sky) ---------------------------------
+        for (bx, ph, sz, sp) in self._blobs:
+            sy = ph * horizon * 0.7
+            if sy > horizon - 8:
+                continue
+            tw_ = 0.45 + 0.55 * (0.5 + 0.5 * math.sin(self._t * 0.12
+                                                      + ph * 6.283 + bx * 9))
+            c = QColor("#ffffff"); c.setAlpha(int(40 + 150 * tw_ * sz))
+            p.setBrush(c)
+            r0 = 1 + sz * 1.6
+            p.drawEllipse(int(bx * w), int(sy), int(r0), int(r0))
+        # --- the neon sun: outer glow + banded disc ----------------------
+        r = max(70, int(min(w, h) * 0.20))
+        cx, cy = w // 2, horizon
+        glow = QRadialGradient(cx, cy, r * 1.9)
+        glow.setColorAt(0.0, QColor(255, 110, 199, 130))
+        glow.setColorAt(0.5, QColor(255, 110, 199, 45))
+        glow.setColorAt(1.0, QColor(255, 110, 199, 0))
+        p.setBrush(glow)
+        p.drawEllipse(int(cx - r * 1.9), int(cy - r * 1.9),
+                      int(r * 3.8), int(r * 3.8))
+        sun = QLinearGradient(0, cy - r, 0, cy + r)
+        sun.setColorAt(0.0, QColor("#fff07a"))
+        sun.setColorAt(0.5, QColor("#ff8e5e"))
+        sun.setColorAt(1.0, QColor("#ff3d9a"))
+        # clip the disc so the gap-bands don't leak outside it
+        path = QPainterPath()
+        path.addEllipse(float(cx - r), float(cy - r), float(2 * r), float(2 * r))
+        p.save()
+        p.setClipPath(path)
         p.setBrush(sun)
-        p.drawEllipse(cx - r, cy - r, 2 * r, 2 * r)
-        # sun gaps (horizontal bars in bg colour over the lower half)
-        p.setBrush(QColor("#1a1230"))
-        for i in range(6):
-            yy = cy + 4 + i * (r // 7)
+        p.drawRect(cx - r, cy - r, 2 * r, 2 * r)
+        # retro horizontal gaps across the lower 60% of the sun
+        p.setBrush(QColor("#0c0718"))
+        for i in range(7):
+            band = int(r * 0.34) + i * int(r * 0.12)
+            yy = cy - r * 0.15 + band
+            gh = max(2, int(r * 0.05) + i)   # gaps widen toward the bottom
             if yy < cy + r:
-                p.drawRect(cx - r, yy, 2 * r, max(2, r // 18))
-        # grid
-        pen = QPen(QColor(1, 205, 254, 150)); pen.setWidth(2)
-        p.setPen(pen)
-        for i in range(-10, 11):           # vertical lines fanning out
-            x = cx + i * (w // 12)
+                p.drawRect(int(cx - r), int(yy), int(2 * r), gh)
+        p.restore()
+        # --- mountain silhouette on the horizon --------------------------
+        ridge = QPainterPath()
+        ridge.moveTo(0, horizon)
+        rnd_peaks = [(0.0, 0.0), (0.12, 0.10), (0.24, 0.03), (0.38, 0.16),
+                     (0.5, 0.05), (0.62, 0.18), (0.76, 0.04), (0.88, 0.12),
+                     (1.0, 0.0)]
+        for fx, fy in rnd_peaks:
+            ridge.lineTo(fx * w, horizon - fy * h * 0.9)
+        ridge.lineTo(w, horizon)
+        ridge.closeSubpath()
+        p.setBrush(QColor("#160a28"))
+        p.drawPath(ridge)
+        # thin neon ridge outline
+        pen = QPen(QColor(1, 205, 254, 160)); pen.setWidth(1)
+        p.setPen(pen); p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawPath(ridge)
+        # --- perspective grid (cyan→magenta, accelerating toward us) -----
+        gpen = QPen(QColor(1, 205, 254, 170)); gpen.setWidth(2)
+        p.setPen(gpen)
+        for i in range(-12, 13):           # vertical lines fanning out
+            x = cx + i * (w // 11)
             p.drawLine(cx, horizon, x, h)
-        off = (self._t * 6) % 46
-        y = horizon + 1
-        step = 8
-        while y < h:                       # horizontal lines, accelerating
-            p.drawLine(0, int(y + off * (y - horizon) / h), w,
-                       int(y + off * (y - horizon) / h))
-            step += 6
-            y += step
-        self._scrim(p, "#1a1230", 70)
+        off = (self._t * 4) % 1.0          # 0..1 scroll within one band
+        depth = h - horizon
+        for i in range(1, 22):             # horizontal lines, ease toward us
+            f = ((i + off) / 22.0) ** 2.4  # quadratic perspective spacing
+            yy = int(horizon + f * depth)
+            # fade lines magenta as they approach the bottom edge
+            mix = f
+            gpen.setColor(QColor(int(1 + 254 * mix), int(205 - 90 * mix),
+                                 int(254 - 60 * mix), 170))
+            p.setPen(gpen)
+            p.drawLine(0, yy, w, yy)
+        self._scrim(p, "#160a28", 64)
 
     def _heart(self, cx, cy, s):
         from PyQt6.QtGui import QPainterPath
@@ -1492,54 +1545,199 @@ class _Backdrop(QWidget):
         path.cubicTo(cx + s * 0.55, cy - s, cx + s, cy - s * 0.3, cx, cy + s * 0.32)
         return path
 
-    def _scene_hearts(self, p):     # kawaii: floating hearts
-        from PyQt6.QtGui import QColor
-        w, h = self.width(), self.height()
-        p.fillRect(self.rect(), self._vgrad("#ffe9f3", "#f1e6ff"))
-        p.setPen(Qt.PenStyle.NoPen)
-        for (bx, ph, sz, sp) in self._blobs:
-            s = 9 + sz * 26
-            x = bx * w
-            y = h + s - ((self._t * (0.6 + sp * 1.6) + ph * (h + 80))
-                         % (h + 2 * s))
-            col = QColor("#ff8fbf") if (ph > 0.5) else QColor("#c9a6ff")
-            col.setAlpha(150)
-            p.setBrush(col)
-            p.drawPath(self._heart(x, y, s))
-        self._scrim(p, "#fff0f6", 70)
+    def _sparkle(self, p, cx, cy, s, col):
+        """A 4-point twinkle star (kawaii sticker style)."""
+        from PyQt6.QtGui import QPainterPath
+        path = QPainterPath()
+        k = s * 0.26          # waist of the star arms
+        path.moveTo(cx, cy - s)
+        path.cubicTo(cx + k, cy - k, cx + k, cy - k, cx + s, cy)
+        path.cubicTo(cx + k, cy + k, cx + k, cy + k, cx, cy + s)
+        path.cubicTo(cx - k, cy + k, cx - k, cy + k, cx - s, cy)
+        path.cubicTo(cx - k, cy - k, cx - k, cy - k, cx, cy - s)
+        p.setBrush(col)
+        p.drawPath(path)
 
-    def _scene_bubbles(self, p):    # y2k: rising glassy bubbles
-        from PyQt6.QtGui import QColor, QPen
+    def _scene_hearts(self, p):     # kawaii: hearts + sparkles + bokeh
+        from PyQt6.QtGui import QColor, QRadialGradient, QLinearGradient, QBrush
+        import math
         w, h = self.width(), self.height()
-        p.fillRect(self.rect(), self._vgrad("#dff1ff", "#bfe3ff"))
-        for (bx, ph, sz, sp) in self._blobs:
-            s = 10 + sz * 34
-            x = bx * w
-            y = h + s - ((self._t * (0.5 + sp * 1.4) + ph * (h + 80))
-                         % (h + 2 * s))
-            fill = QColor("#ffffff"); fill.setAlpha(70)
-            p.setBrush(fill)
-            pen = QPen(QColor(0, 168, 255, 120)); pen.setWidth(2)
-            p.setPen(pen)
-            p.drawEllipse(int(x - s), int(y - s), int(2 * s), int(2 * s))
-        self._scrim(p, "#eaf6ff", 70)
-
-    def _scene_pixels(self, p):     # pixel: drifting blocks (Game Boy greens)
-        from PyQt6.QtGui import QColor
-        w, h = self.width(), self.height()
-        p.fillRect(self.rect(), QColor("#0f380f"))
-        shades = ["#9bbc0f", "#8bac0f", "#306230", "#0f380f"]
+        # bolder candy gradient: peach → pink → lavender, on a diagonal
+        g = QLinearGradient(0, 0, w, h)
+        g.setColorAt(0.0, QColor("#ffd9ec"))
+        g.setColorAt(0.5, QColor("#ffb3da"))
+        g.setColorAt(1.0, QColor("#d6c2ff"))
+        p.fillRect(self.rect(), QBrush(g))
         p.setPen(Qt.PenStyle.NoPen)
+        # soft out-of-focus bokeh — big translucent circles drifting up slowly
+        for (bx, ph, sz, sp) in self._blobs[:14]:
+            br = 28 + sz * 90
+            x = bx * w + math.sin(self._t * 0.02 + ph * 6.283) * 26
+            y = h + br - ((self._t * (0.18 + sp * 0.5) + ph * (h + 200))
+                          % (h + 2 * br))
+            bok = QRadialGradient(x, y, br)
+            tint = "#fff0fa" if ph > 0.5 else "#efe6ff"
+            c0 = QColor(tint); c0.setAlpha(70)
+            c1 = QColor(tint); c1.setAlpha(0)
+            bok.setColorAt(0.0, c0); bok.setColorAt(1.0, c1)
+            p.setBrush(bok)
+            p.drawEllipse(int(x - br), int(y - br), int(2 * br), int(2 * br))
+        # foreground: hearts and stars, swaying as they rise
+        palette = ["#ff5fa2", "#ff8fbf", "#b98bff", "#ff9ecf"]
         for i, (bx, ph, sz, sp) in enumerate(self._blobs):
-            s = 8 + int(sz * 22)
-            s -= s % 4 or 4                 # snap to a 4px pixel grid
-            x = int((bx * w) // s * s)
-            y = int((h + s - ((self._t * (0.4 + sp) + ph * (h + 60))
-                              % (h + 2 * s))) // s * s)
+            s = 9 + sz * 24
+            sway = math.sin(self._t * 0.05 + ph * 6.283) * (10 + sz * 26)
+            x = bx * w + sway
+            y = h + s - ((self._t * (0.7 + sp * 1.9) + ph * (h + 80))
+                         % (h + 2 * s))
+            col = QColor(palette[i % len(palette)]); col.setAlpha(180)
+            if i % 3 == 0:                      # ~1/3 are twinkle stars
+                spin = 0.85 + 0.15 * math.sin(self._t * 0.18 + ph * 6.283)
+                self._sparkle(p, x, y, s * spin, col)
+            else:
+                p.setBrush(col)
+                p.drawPath(self._heart(x, y, s))
+        # tiny white glints scattered for extra sparkle
+        for (bx, ph, sz, sp) in self._blobs[::3]:
+            tw_ = 0.5 + 0.5 * math.sin(self._t * 0.2 + ph * 12 + bx * 7)
+            gx = (bx * 1.7 % 1.0) * w
+            gy = ((ph * 1.3 + self._t * 0.004) % 1.0) * h
+            c = QColor("#ffffff"); c.setAlpha(int(120 * tw_))
+            self._sparkle(p, gx, gy, 3 + sz * 4, c)
+        self._scrim(p, "#fff0f6", 60)
+
+    def _starburst(self, p, cx, cy, R, col, spikes=4):
+        """A chunky Web-1.0 lens-flare: long thin spikes + a bright core."""
+        from PyQt6.QtGui import QColor, QPainterPath
+        import math
+        for k in range(spikes):
+            ang = math.pi * k / spikes
+            dx, dy = math.cos(ang), math.sin(ang)
+            wdt = max(2.0, R * 0.06)
+            path = QPainterPath()
+            path.moveTo(cx + dy * wdt, cy - dx * wdt)
+            path.lineTo(cx + dx * R, cy + dy * R)
+            path.lineTo(cx - dy * wdt, cy + dx * wdt)
+            path.lineTo(cx - dx * R, cy - dy * R)
+            path.closeSubpath()
+            p.setBrush(col)
+            p.drawPath(path)
+
+    def _scene_bubbles(self, p):    # y2k: retro starfield + lens-flare shine
+        from PyQt6.QtGui import QColor, QRadialGradient, QBrush
+        import math
+        w, h = self.width(), self.height()
+        # chunky 2000s aqua radial backdrop (light → saturated edges)
+        bg = QRadialGradient(w * 0.5, h * 0.42, max(w, h) * 0.75)
+        bg.setColorAt(0.0, QColor("#f4fbff"))
+        bg.setColorAt(0.55, QColor("#cfeeff"))
+        bg.setColorAt(1.0, QColor("#8fd0ff"))
+        p.fillRect(self.rect(), QBrush(bg))
+        p.setPen(Qt.PenStyle.NoPen)
+        # drifting starfield — small aqua diamonds streaming to the left
+        for i, (bx, ph, sz, sp) in enumerate(self._blobs):
+            s = 3 + sz * 7
+            x = ((bx + self._t * (0.0015 + sp * 0.004)) % 1.0) * w
+            x = w - x                       # drift right→left
+            y = ph * h
+            twk = 0.5 + 0.5 * math.sin(self._t * 0.15 + ph * 9 + bx * 5)
+            c = QColor("#00a8ff") if i % 2 else QColor("#ffffff")
+            c.setAlpha(int(60 + 140 * twk))
+            self._starburst(p, x, y, s, c, spikes=2)
+        # one big rotating lens-flare in the upper area (the Web-1.0 "shine")
+        fx = w * (0.32 + 0.12 * math.sin(self._t * 0.012))
+        fy = h * 0.30
+        R = max(60, int(min(w, h) * 0.22))
+        halo = QRadialGradient(fx, fy, R * 1.4)
+        halo.setColorAt(0.0, QColor(255, 255, 255, 180))
+        halo.setColorAt(0.4, QColor(160, 220, 255, 90))
+        halo.setColorAt(1.0, QColor(160, 220, 255, 0))
+        p.setBrush(halo)
+        p.drawEllipse(int(fx - R * 1.4), int(fy - R * 1.4),
+                      int(R * 2.8), int(R * 2.8))
+        spin = self._t * 0.03
+        p.save()
+        p.translate(fx, fy)
+        p.rotate(math.degrees(spin))
+        glint = QColor(255, 255, 255, 210)
+        self._starburst(p, 0, 0, R, glint, spikes=4)
+        p.restore()
+        core = QRadialGradient(fx, fy, R * 0.28)
+        core.setColorAt(0.0, QColor(255, 255, 255, 235))
+        core.setColorAt(1.0, QColor(255, 255, 255, 0))
+        p.setBrush(core)
+        p.drawEllipse(int(fx - R * 0.28), int(fy - R * 0.28),
+                      int(R * 0.56), int(R * 0.56))
+        # a couple of small secondary flares along the flare axis
+        for off, rr in ((0.55, 0.10), (1.25, 0.06), (-0.4, 0.05)):
+            sx = fx + (w * 0.5 - fx) * off
+            sy = fy + (h * 0.5 - fy) * off
+            sr = R * rr
+            sc = QColor(0, 168, 255, 70)
+            p.setBrush(sc)
+            p.drawEllipse(int(sx - sr), int(sy - sr), int(2 * sr), int(2 * sr))
+        self._scrim(p, "#eaf6ff", 66)
+
+    # Tetromino-ish shapes on a 2x2 cell grid — the classic 8-bit block look.
+    _PIX_SHAPES = (
+        ((0, 0), (1, 0), (0, 1), (1, 1)),   # O (square)
+        ((0, 0), (1, 0), (2, 0), (1, 1)),   # T
+        ((0, 0), (0, 1), (1, 1), (2, 1)),   # J
+        ((0, 0), (1, 0), (2, 0), (3, 0)),   # I
+        ((1, 0), (2, 0), (0, 1), (1, 1)),   # S
+    )
+
+    def _scene_pixels(self, p):     # pixel: 8-bit Game Boy falling blocks
+        from PyQt6.QtGui import QColor
+        import math
+        w, h = self.width(), self.height()
+        # the 4 classic DMG screen shades (darkest → lightest)
+        dark, mid, light, lite = "#0f380f", "#306230", "#8bac0f", "#9bbc0f"
+        p.fillRect(self.rect(), QColor(dark))
+        p.setPen(Qt.PenStyle.NoPen)
+        # --- dithered checker backdrop (snapped to a chunky pixel grid) ---
+        cell = 16
+        # offset the dither so it gently scrolls (LCD "ghosting" vibe)
+        scroll = int(self._t * 0.5) % (2 * cell)
+        c_dither = QColor(mid); c_dither.setAlpha(45)
+        p.setBrush(c_dither)
+        ny = h // cell + 2
+        nx = w // cell + 2
+        for gy in range(ny):
+            for gx in range(nx):
+                if (gx + gy) % 2 == 0:
+                    p.fillRect(gx * cell, gy * cell - scroll, cell, cell,
+                               c_dither)
+        shades = (light, mid, lite, light)
+        # --- falling tetromino blocks (snapped to the pixel grid) ---------
+        for i, (bx, ph, sz, sp) in enumerate(self._blobs):
+            unit = 8 + int(sz * 8)
+            unit -= unit % 4 or 4           # snap unit to 4px
+            shape = self._PIX_SHAPES[i % len(self._PIX_SHAPES)]
+            span = h + 6 * unit
+            x0 = int((bx * w) // unit * unit)
+            y0 = int((h + 2 * unit
+                      - ((self._t * (0.5 + sp * 1.3) + ph * span) % span))
+                     // unit * unit)
             col = QColor(shades[i % len(shades)])
-            col.setAlpha(120)
-            p.fillRect(x, y, s, s, col)
-        self._scrim(p, "#0f380f", 90)
+            col.setAlpha(150)
+            hi = QColor(lite); hi.setAlpha(170)     # top/left bevel
+            for (dx, dy) in shape:
+                bx0, by0 = x0 + dx * unit, y0 + dy * unit
+                p.fillRect(bx0, by0, unit, unit, col)
+                # a 2px highlight edge gives each block a chunky 3D bevel
+                p.fillRect(bx0, by0, unit, 2, hi)
+                p.fillRect(bx0, by0, 2, unit, hi)
+        # --- twinkling "power pixels": bright single cells ----------------
+        for (bx, ph, sz, sp) in self._blobs[::4]:
+            twk = 0.5 + 0.5 * math.sin(self._t * 0.25 + ph * 11 + bx * 6)
+            if twk < 0.55:
+                continue
+            px = int((bx * w) // 8 * 8)
+            py = int((((ph + self._t * 0.002) % 1.0) * h) // 8 * 8)
+            c = QColor(lite); c.setAlpha(int(120 + 120 * twk))
+            p.fillRect(px, py, 8, 8, c)
+        self._scrim(p, "#0f380f", 78)
 
 
 class MainWindow(QWidget):
