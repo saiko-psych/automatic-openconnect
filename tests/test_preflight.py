@@ -27,8 +27,9 @@ class TestOpenconnect(unittest.TestCase):
             c = preflight.check_openconnect(d)
         self.assertFalse(c.ok)
 
-    def test_missing_gives_install_hint(self):
-        with mock.patch("os.path.isdir", return_value=False), \
+    def test_missing_gives_install_hint_windows(self):
+        with mock.patch.object(preflight.sys, "platform", "win32"), \
+             mock.patch("os.path.isdir", return_value=False), \
              mock.patch("os.path.isfile", return_value=False), \
              mock.patch("automatic_openconnect.gui_logic.detect_openconnect",
                         return_value=""):
@@ -36,6 +37,18 @@ class TestOpenconnect(unittest.TestCase):
         self.assertFalse(c.ok)
         self.assertEqual(c.fix, "fix.openconnect")
         self.assertEqual(c.action, "open_download")
+
+    def test_missing_gives_install_hint_unix(self):
+        # Linux/macOS: package-manager hint, no download button.
+        with mock.patch.object(preflight.sys, "platform", "linux"), \
+             mock.patch("os.path.isdir", return_value=False), \
+             mock.patch("os.path.isfile", return_value=False), \
+             mock.patch("automatic_openconnect.gui_logic.detect_openconnect",
+                        return_value=""):
+            c = preflight.check_openconnect("")
+        self.assertFalse(c.ok)
+        self.assertEqual(c.fix, "fix.openconnect_unix")
+        self.assertEqual(c.action, "")
 
 
 class TestOpenconnectSso(unittest.TestCase):
@@ -164,7 +177,7 @@ class TestAllOkIgnoresWarnings(unittest.TestCase):
 
 
 class TestCheckAll(unittest.TestCase):
-    def test_returns_all_checks_and_all_ok_helper(self):
+    def _run_check_all(self):
         with mock.patch("automatic_openconnect.preflight.os.path.exists",
                         return_value=True), \
              mock.patch("os.path.isfile", return_value=True), \
@@ -173,11 +186,28 @@ class TestCheckAll(unittest.TestCase):
                         return_value="pw"), \
              mock.patch("automatic_openconnect.secrets.get_uni_totp_secret",
                         return_value="seed"):
-            checks = preflight.check_all(
+            return preflight.check_all(
                 email="x@uni-graz.at",
                 openconnect_path=r"C:\oc\openconnect.exe",
                 openconnect_sso_path=r"C:\oc\openconnect-sso.exe")
+
+    def test_windows_includes_wintun_and_vpnc(self):
+        with mock.patch.object(preflight.sys, "platform", "win32"):
+            checks = self._run_check_all()
+        names = [c.name for c in checks]
         self.assertEqual(len(checks), 6)
+        self.assertIn("check.wintun", names)
+        self.assertIn("check.vpnc", names)
+        self.assertTrue(preflight.all_ok(checks))
+
+    def test_unix_omits_windows_only_checks(self):
+        # Linux/macOS: no Wintun / vpnc-script-win.js checks.
+        with mock.patch.object(preflight.sys, "platform", "linux"):
+            checks = self._run_check_all()
+        names = [c.name for c in checks]
+        self.assertEqual(len(checks), 4)
+        self.assertNotIn("check.wintun", names)
+        self.assertNotIn("check.vpnc", names)
         self.assertTrue(preflight.all_ok(checks))
 
 

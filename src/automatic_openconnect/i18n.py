@@ -183,6 +183,16 @@ _STRINGS: dict[str, dict[str, str]] = {
               "App braucht; ohne sie wird nur die GUI installiert und "
               "openconnect.exe fehlt. (Nur installieren, nicht starten.) Die App "
               "erkennt sie danach automatisch; sonst im Setup „Durchsuchen…“."},
+    "fix.openconnect_unix": {
+        "en": "Install openconnect with your package manager, e.g. "
+              "`sudo pacman -S openconnect` (Arch), `sudo apt install "
+              "openconnect` (Debian/Ubuntu) or `brew install openconnect` "
+              "(macOS). The app then auto-detects it; if not, use “Browse…”.",
+        "de": "openconnect über deinen Paketmanager installieren, z. B. "
+              "`sudo pacman -S openconnect` (Arch), `sudo apt install "
+              "openconnect` (Debian/Ubuntu) oder `brew install openconnect` "
+              "(macOS). Die App erkennt es danach automatisch; sonst "
+              "„Durchsuchen…“."},
     "fix.wintun": {
         "en": "wintun.dll wasn't found next to openconnect. It ships with "
               "OpenConnect-GUI — reinstalling it usually fixes this. Only "
