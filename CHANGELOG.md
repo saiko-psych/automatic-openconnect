@@ -3,6 +3,24 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.16] - 2026-06-08
+
+### Fixed
+- **Connect now works on laptops running on battery — THE root cause.**
+  Microsoft-documented: tasks created via `New-ScheduledTaskSettingsSet`
+  default to `DisallowStartIfOnBatteries=$true`, so on a laptop on battery the
+  elevated task silently skipped its action (`schtasks /run` returned 0, the
+  backend never ran, Connect timed out with an empty log — exactly the tester
+  reports). The up/down tasks are now registered with
+  `-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries`.
+
+### Changed
+- Back to a single-file exe (the v0.1.15 one-folder ZIP was a wrong guess; the
+  battery setting was the real cause).
+
+> Existing installs: open **Configuration → Save** once (one admin prompt) to
+> re-register the task with the new battery setting.
+
 ## [0.1.15] - 2026-06-07
 
 ### Fixed

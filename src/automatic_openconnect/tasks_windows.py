@@ -74,8 +74,15 @@ def build_register_script(python_exe: str, config_path: str,
             f"-Argument '{argline}'{wd_arg};\n"
             f"$p = New-ScheduledTaskPrincipal -UserId $env:USERNAME "
             f"-LogonType Interactive -RunLevel Highest;\n"
+            # CRITICAL: New-ScheduledTaskSettingsSet defaults
+            # DisallowStartIfOnBatteries=$true, so on a LAPTOP ON BATTERY the
+            # task silently does not run its action (schtasks /run still returns
+            # 0). -AllowStartIfOnBatteries + -DontStopIfGoingOnBatteries make it
+            # run on battery too. This was THE cause of "Connect fires the task
+            # but the backend never runs" on a tester's laptop.
             f"$s = New-ScheduledTaskSettingsSet -StartWhenAvailable "
-            f"-MultipleInstances IgnoreNew "
+            f"-MultipleInstances IgnoreNew -AllowStartIfOnBatteries "
+            f"-DontStopIfGoingOnBatteries "
             f"-ExecutionTimeLimit (New-TimeSpan -Hours 24);\n"
             f"Register-ScheduledTask -TaskName '{name}' -Action $a "
             f"-Principal $p -Settings $s -Force | Out-Null;\n"
