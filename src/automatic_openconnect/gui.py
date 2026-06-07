@@ -85,6 +85,22 @@ DEFAULT_ACCENT = "blue"
 # a theme is just a swap of this dict.
 _SANS = "'Segoe UI', sans-serif"
 _MONO = "'Cascadia Mono', 'Consolas', 'DejaVu Sans Mono', monospace"
+_COMIC = "'Comic Sans MS', 'Comic Sans', 'Chalkboard SE', cursive"
+_PIXEL = "'Press Start 2P', 'Courier New', monospace"
+
+
+def _load_bundled_fonts() -> None:
+    """Register bundled .ttf fonts (assets/fonts) so themes can use them by
+    family name. Needs a QApplication to exist; call once at startup."""
+    try:
+        from PyQt6.QtGui import QFontDatabase
+        fdir = _ir.files("automatic_openconnect") / "assets" / "fonts"
+        for entry in fdir.iterdir():
+            name = str(entry)
+            if name.lower().endswith(".ttf"):
+                QFontDatabase.addApplicationFont(name)
+    except Exception:
+        pass
 
 _PALETTES = {
     "dark": {
@@ -111,9 +127,131 @@ _PALETTES = {
         "POPUPSEL": "#1f3d29", "LOGBG": "#060906",
         "FONT": _MONO, "PRIMARY_FG": "#04140a",
     },
+    # Nord — calm cool blue-grey (dark), frost accent. Professional, easy.
+    "nord": {
+        "BG": "#2e3440", "FG": "#d8dee9", "SUB": "#7b8494", "HEADER": "#eceff4",
+        "PANEL": "#3b4252", "BORDER": "#434c5e", "HOVER": "#3f4858",
+        "DISFG": "#6a7384", "DISBG": "#333a47", "INDBORDER": "#4c566a",
+        "POPUPSEL": "#434c5e", "LOGBG": "#272c36",
+        "FONT": _SANS, "PRIMARY_FG": "#2e3440",
+    },
+    # Plum — cozy warm aubergine/indigo (dark) with a coral accent.
+    "plum": {
+        "BG": "#221825", "FG": "#e9dcee", "SUB": "#9c8aa6", "HEADER": "#faf0ff",
+        "PANEL": "#2d2132", "BORDER": "#3e2f45", "HOVER": "#382a3f",
+        "DISFG": "#6e5e76", "DISBG": "#281d2d", "INDBORDER": "#4a394f",
+        "POPUPSEL": "#3e2f45", "LOGBG": "#1a121e",
+        "FONT": _SANS, "PRIMARY_FG": "#221825",
+    },
+    # Solarized — warm cream (light) with solar blue. Classic, comfortable.
+    "solarized": {
+        "BG": "#fdf6e3", "FG": "#586e75", "SUB": "#93a1a1", "HEADER": "#073642",
+        "PANEL": "#eee8d5", "BORDER": "#ddd6c1", "HOVER": "#e7e0cb",
+        "DISFG": "#a9a893", "DISBG": "#ece5d0", "INDBORDER": "#c8c0a8",
+        "POPUPSEL": "#e7e0cb", "LOGBG": "#fbf3df",
+        "FONT": _SANS, "PRIMARY_FG": "#fdf6e3",
+    },
+    # Sand — paper off-white (light), terracotta accent. Editorial, premium.
+    "sand": {
+        "BG": "#f5f0e6", "FG": "#3a352c", "SUB": "#837b6c", "HEADER": "#211d15",
+        "PANEL": "#fffdf6", "BORDER": "#ddd4c2", "HOVER": "#ece5d5",
+        "DISFG": "#b0a892", "DISBG": "#ebe4d4", "INDBORDER": "#c9bea4",
+        "POPUPSEL": "#ece5d5", "LOGBG": "#fffdf6",
+        "FONT": _SANS, "PRIMARY_FG": "#ffffff",
+    },
+    # --- bold / artsy themes (loud colours + character fonts) -------------
+    # Y2K — early-2000s Web 2.0: aqua/blue, Comic Sans, glossy buttons.
+    "y2k": {
+        "BG": "#dff1ff", "FG": "#0a3d62", "SUB": "#3c79a8", "HEADER": "#0652dd",
+        "PANEL": "#ffffff", "BORDER": "#8fd0ef", "HOVER": "#cdeaff",
+        "DISFG": "#8fb4cf", "DISBG": "#e6f4ff", "INDBORDER": "#7ec8e3",
+        "POPUPSEL": "#cdeaff", "LOGBG": "#f2fbff",
+        "FONT": _COMIC, "PRIMARY_FG": "#ffffff",
+    },
+    # Kawaii — pastel anime: candy pink + lavender, Comic Sans, very rounded.
+    "kawaii": {
+        "BG": "#ffe9f3", "FG": "#7a4a63", "SUB": "#c489a6", "HEADER": "#d6336c",
+        "PANEL": "#fff5fa", "BORDER": "#ffc2da", "HOVER": "#ffd9e9",
+        "DISFG": "#d9aec0", "DISBG": "#ffeef5", "INDBORDER": "#ffb3d1",
+        "POPUPSEL": "#ffd9e9", "LOGBG": "#fff5fa",
+        "FONT": _COMIC, "PRIMARY_FG": "#ffffff",
+    },
+    # Vaporwave — dark synth: magenta + cyan on deep purple, gradient button.
+    "vaporwave": {
+        "BG": "#241b2f", "FG": "#f0c9ff", "SUB": "#a78bc0", "HEADER": "#ff71ce",
+        "PANEL": "#2e2340", "BORDER": "#4a3a63", "HOVER": "#382b4d",
+        "DISFG": "#6e5d85", "DISBG": "#281e36", "INDBORDER": "#54426e",
+        "POPUPSEL": "#3a2c50", "LOGBG": "#1b1426",
+        "FONT": _SANS, "PRIMARY_FG": "#1a1226",
+    },
+    # Pixel — Game Boy DMG greens, pixel font, square + chunky.
+    "pixel": {
+        "BG": "#0f380f", "FG": "#9bbc0f", "SUB": "#6b8c1a", "HEADER": "#c6de4a",
+        "PANEL": "#214b21", "BORDER": "#306230", "HOVER": "#2a5a2a",
+        "DISFG": "#4a6b1f", "DISBG": "#143614", "INDBORDER": "#306230",
+        "POPUPSEL": "#306230", "LOGBG": "#0a2a0a",
+        "FONT": _PIXEL, "PRIMARY_FG": "#0f380f",
+    },
 }
 DEFAULT_THEME = "dark"
-_TERMINAL_ACCENT = ("#33ff66", "#28cc52")   # phosphor green base, hover
+
+# Themes painted square (no rounded corners).
+_SQUARE_THEMES = {"terminal", "pixel"}
+
+# Themes with an animated painted backdrop (scene name → _Backdrop._scene_*).
+_THEME_BACKDROP = {
+    "vaporwave": "grid",
+    "kawaii": "hearts",
+    "y2k": "bubbles",
+    "pixel": "pixels",
+}
+
+# Themes that force their own cohesive accent (the accent picker only applies
+# to Dark/Light). Values are (base, hover).
+_THEME_ACCENTS = {
+    "terminal":  ("#33ff66", "#28cc52"),   # phosphor green
+    "nord":      ("#88c0d0", "#7badbf"),   # frost blue
+    "plum":      ("#ff8a65", "#f5734a"),   # coral
+    "solarized": ("#268bd2", "#1f72ad"),   # solar blue
+    "sand":      ("#c1654a", "#a8543c"),   # terracotta
+    "y2k":       ("#00a8ff", "#0097e6"),   # aqua
+    "kawaii":    ("#ff6fa5", "#ff4f90"),   # candy pink
+    "vaporwave": ("#01cdfe", "#00b4e6"),   # cyan
+    "pixel":     ("#8bac0f", "#76930c"),   # Game Boy green
+}
+
+# Per-theme EXTRA stylesheet appended after the base — for the bold/artsy
+# flourishes (glossy gradient buttons, extra-round corners) that don't fit the
+# plain token swap. Self-contained selectors only, so the base stays intact.
+_THEME_EXTRA_QSS = {
+    "y2k": """
+QPushButton#primary { background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+    stop:0 #7fd4ff, stop:0.5 #00a8ff, stop:1 #0077c2);
+    border: 1px solid #0077c2; border-radius: 11px; }
+QPushButton { border-radius: 11px; background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+    stop:0 #ffffff, stop:1 #e3f3ff); }
+""",
+    "kawaii": """
+QPushButton, QLineEdit, QComboBox { border-radius: 16px; }
+QPushButton#primary { background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+    stop:0 #ffa6c9, stop:1 #ff6fa5); border: none; border-radius: 18px; }
+QCheckBox::indicator { border-radius: 8px; }
+""",
+    "vaporwave": """
+QPushButton#primary { background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
+    stop:0 #ff71ce, stop:1 #01cdfe); border: none; color: #1a1226;
+    font-weight: 700; }
+""",
+    # Press Start 2P is large + blocky → scale every size down for the pixel UI.
+    "pixel": """
+QWidget { font-size: 10px; }
+QLabel#header { font-size: 15px; }
+QLabel#statusText { font-size: 12px; }
+QLabel#subheader { font-size: 9px; }
+QPushButton#primary { font-size: 11px; }
+QPushButton { padding: 10px 14px; }
+""",
+}
 
 # Current accent + theme — used to tint action icons (the stylesheet handles
 # the rest). Terminal theme tints icons phosphor green regardless of accent.
@@ -183,8 +321,8 @@ def _asset_url(name: str) -> str:
 def _build_stylesheet(accent: str = DEFAULT_ACCENT,
                       theme: str = DEFAULT_THEME) -> str:
     pal = _PALETTES.get(theme, _PALETTES[DEFAULT_THEME])
-    if theme == "terminal":
-        base, hover = _TERMINAL_ACCENT   # phosphor green, ignore the accent pick
+    if theme in _THEME_ACCENTS:
+        base, hover = _THEME_ACCENTS[theme]   # cohesive per-theme accent
     else:
         base, hover = _ACCENTS.get(accent, _ACCENTS[DEFAULT_ACCENT])
     s = _STYLESHEET_TMPL
@@ -193,9 +331,23 @@ def _build_stylesheet(accent: str = DEFAULT_ACCENT,
     s = s.replace("@ACCENT_HOVER@", hover).replace("@ACCENT@", base)
     s = s.replace("@CHEVRON@", _asset_url("chevron"))
     s = s.replace("@CHECK@", _asset_url("check"))
-    if theme == "terminal":
-        # Square everything for the CRT/terminal look.
+    if theme in _SQUARE_THEMES:
+        # Square everything for the CRT / pixel look.
         s = re.sub(r"border-radius:\s*\d+px", "border-radius: 0px", s)
+    # Bold/artsy flourishes (glossy buttons, extra-round corners) appended last.
+    s += _THEME_EXTRA_QSS.get(theme, "")
+    if theme in _THEME_BACKDROP:
+        # Let the animated backdrop show through: containers + labels go
+        # transparent (the backdrop paints its own dimming scrim so text stays
+        # readable), while input cards keep their bg and the log / dialogs /
+        # menus stay opaque (dialogs are separate top-level windows).
+        s += (
+            "\nQStackedWidget, QScrollArea, QFrame, QLabel, QCheckBox,"
+            " ControlView, SetupView, SettingsView, PrereqPanel"
+            " { background: transparent; }\n"
+            f"QPlainTextEdit {{ background-color: {pal['LOGBG']}; }}\n"
+            f"QDialog, QMenu, QToolTip {{ background-color: {pal['PANEL']}; }}\n"
+        )
     return s
 
 
@@ -219,8 +371,8 @@ def _accent_icon(name: str) -> QIcon:
     """Bundled monochrome PNG recoloured to the current accent, so the action
     icons match the theme (and stay visible in both light and dark mode)."""
     from PyQt6.QtGui import QColor, QPainter, QPixmap
-    if _CURRENT_THEME == "terminal":
-        base = _TERMINAL_ACCENT[0]   # phosphor green, matches the CRT theme
+    if _CURRENT_THEME in _THEME_ACCENTS:
+        base = _THEME_ACCENTS[_CURRENT_THEME][0]   # matches the theme's accent
     else:
         base = _ACCENTS.get(_CURRENT_ACCENT, _ACCENTS[DEFAULT_ACCENT])[0]
     try:
@@ -1044,10 +1196,10 @@ class SettingsView(QWidget):
         # --- Appearance -----------------------------------------------
         root.addWidget(self._section(t("settings.sec_appearance")))
         self.theme = QComboBox()
-        self._theme_keys = ["dark", "light", "terminal"]
-        self.theme.addItem(t("settings.theme_dark"))
-        self.theme.addItem(t("settings.theme_light"))
-        self.theme.addItem(t("settings.theme_terminal"))
+        self._theme_keys = ["dark", "light", "nord", "plum", "solarized",
+                            "sand", "terminal", "y2k", "kawaii", "vaporwave"]
+        for _tk in self._theme_keys:
+            self.theme.addItem(t(f"settings.theme_{_tk}"))
         cur_theme = ui.get("theme", DEFAULT_THEME)
         self.theme.setCurrentIndex(self._theme_keys.index(cur_theme)
                                    if cur_theme in self._theme_keys else 0)
@@ -1230,12 +1382,173 @@ class SettingsView(QWidget):
                                 t("settings.third_party_text"))
 
 
+class _Backdrop(QWidget):
+    """Animated, painted background for the artsy themes — drawn (no GIF), so
+    it's smooth and recolours with the theme. Mouse-transparent; fills the
+    parent and paints a per-theme scene + a dimming scrim so foreground text
+    stays readable."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._scene = None
+        self._pal = {}
+        self._t = 0.0
+        import random
+        rnd = random.Random(20260607)
+        # (x0..1, phase0..1, size0..1, speed0..1) — stable layout per element.
+        self._blobs = [(rnd.random(), rnd.random(), rnd.random(), rnd.random())
+                       for _ in range(40)]
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._tick)
+
+    def set_scene(self, scene, palette):
+        self._scene = scene
+        self._pal = palette or {}
+        if scene:
+            self.show()
+            self.lower()
+            if not self._timer.isActive():
+                self._timer.start(66)   # ~15 fps — smooth + light on CPU
+        else:
+            self._timer.stop()
+            self.hide()
+        self.update()
+
+    def _tick(self):
+        self._t += 1.0
+        self.update()
+
+    def paintEvent(self, _e):
+        if not self._scene:
+            return
+        from PyQt6.QtGui import QPainter
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        try:
+            getattr(self, f"_scene_{self._scene}")(p)
+        except Exception:
+            pass
+        p.end()
+
+    def _vgrad(self, top, bottom):
+        from PyQt6.QtGui import QLinearGradient, QColor
+        g = QLinearGradient(0, 0, 0, self.height())
+        g.setColorAt(0.0, QColor(top))
+        g.setColorAt(1.0, QColor(bottom))
+        return g
+
+    def _scrim(self, p, hexcol, alpha):
+        from PyQt6.QtGui import QColor
+        c = QColor(hexcol)
+        c.setAlpha(alpha)
+        p.fillRect(self.rect(), c)
+
+    # --- scenes ----------------------------------------------------------
+
+    def _scene_grid(self, p):       # vaporwave: synth sun + perspective grid
+        from PyQt6.QtGui import QColor, QRadialGradient, QPen
+        import math
+        w, h = self.width(), self.height()
+        p.fillRect(self.rect(), self._vgrad("#2a1a45", "#0e0a1e"))
+        horizon = int(h * 0.56)
+        # sun
+        r = max(60, int(w * 0.16))
+        cx, cy = w // 2, horizon
+        sun = QRadialGradient(cx, cy, r)
+        sun.setColorAt(0.0, QColor("#ffe66d"))
+        sun.setColorAt(0.6, QColor("#ff6ec7"))
+        sun.setColorAt(1.0, QColor("#b14bd8"))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(sun)
+        p.drawEllipse(cx - r, cy - r, 2 * r, 2 * r)
+        # sun gaps (horizontal bars in bg colour over the lower half)
+        p.setBrush(QColor("#1a1230"))
+        for i in range(6):
+            yy = cy + 4 + i * (r // 7)
+            if yy < cy + r:
+                p.drawRect(cx - r, yy, 2 * r, max(2, r // 18))
+        # grid
+        pen = QPen(QColor(1, 205, 254, 150)); pen.setWidth(2)
+        p.setPen(pen)
+        for i in range(-10, 11):           # vertical lines fanning out
+            x = cx + i * (w // 12)
+            p.drawLine(cx, horizon, x, h)
+        off = (self._t * 6) % 46
+        y = horizon + 1
+        step = 8
+        while y < h:                       # horizontal lines, accelerating
+            p.drawLine(0, int(y + off * (y - horizon) / h), w,
+                       int(y + off * (y - horizon) / h))
+            step += 6
+            y += step
+        self._scrim(p, "#1a1230", 70)
+
+    def _heart(self, cx, cy, s):
+        from PyQt6.QtGui import QPainterPath
+        path = QPainterPath()
+        path.moveTo(cx, cy + s * 0.32)
+        path.cubicTo(cx - s, cy - s * 0.3, cx - s * 0.55, cy - s, cx, cy - s * 0.38)
+        path.cubicTo(cx + s * 0.55, cy - s, cx + s, cy - s * 0.3, cx, cy + s * 0.32)
+        return path
+
+    def _scene_hearts(self, p):     # kawaii: floating hearts
+        from PyQt6.QtGui import QColor
+        w, h = self.width(), self.height()
+        p.fillRect(self.rect(), self._vgrad("#ffe9f3", "#f1e6ff"))
+        p.setPen(Qt.PenStyle.NoPen)
+        for (bx, ph, sz, sp) in self._blobs:
+            s = 9 + sz * 26
+            x = bx * w
+            y = h + s - ((self._t * (0.6 + sp * 1.6) + ph * (h + 80))
+                         % (h + 2 * s))
+            col = QColor("#ff8fbf") if (ph > 0.5) else QColor("#c9a6ff")
+            col.setAlpha(150)
+            p.setBrush(col)
+            p.drawPath(self._heart(x, y, s))
+        self._scrim(p, "#fff0f6", 70)
+
+    def _scene_bubbles(self, p):    # y2k: rising glassy bubbles
+        from PyQt6.QtGui import QColor, QPen
+        w, h = self.width(), self.height()
+        p.fillRect(self.rect(), self._vgrad("#dff1ff", "#bfe3ff"))
+        for (bx, ph, sz, sp) in self._blobs:
+            s = 10 + sz * 34
+            x = bx * w
+            y = h + s - ((self._t * (0.5 + sp * 1.4) + ph * (h + 80))
+                         % (h + 2 * s))
+            fill = QColor("#ffffff"); fill.setAlpha(70)
+            p.setBrush(fill)
+            pen = QPen(QColor(0, 168, 255, 120)); pen.setWidth(2)
+            p.setPen(pen)
+            p.drawEllipse(int(x - s), int(y - s), int(2 * s), int(2 * s))
+        self._scrim(p, "#eaf6ff", 70)
+
+    def _scene_pixels(self, p):     # pixel: drifting blocks (Game Boy greens)
+        from PyQt6.QtGui import QColor
+        w, h = self.width(), self.height()
+        p.fillRect(self.rect(), QColor("#0f380f"))
+        shades = ["#9bbc0f", "#8bac0f", "#306230", "#0f380f"]
+        p.setPen(Qt.PenStyle.NoPen)
+        for i, (bx, ph, sz, sp) in enumerate(self._blobs):
+            s = 8 + int(sz * 22)
+            s -= s % 4 or 4                 # snap to a 4px pixel grid
+            x = int((bx * w) // s * s)
+            y = int((h + s - ((self._t * (0.4 + sp) + ph * (h + 60))
+                              % (h + 2 * s))) // s * s)
+            col = QColor(shades[i % len(shades)])
+            col.setAlpha(120)
+            p.fillRect(x, y, s, s, col)
+        self._scrim(p, "#0f380f", 90)
+
+
 class MainWindow(QWidget):
     def __init__(self, icon=None):
         super().__init__()
         self._icon = icon or QIcon()
         self.setWindowTitle("automatic VPN")
         outer = QVBoxLayout(self)
+        self._backdrop = _Backdrop(self)   # animated bg for artsy themes
 
         # top bar (right-aligned): language selector. App settings live on
         # their own button in the control view (clearer than a stray gear).
@@ -1274,10 +1587,31 @@ class MainWindow(QWidget):
         self._apply_totp_hotkey()
 
         self._route()
+        self._apply_backdrop()
         # Guided first setup: if we're on the setup screen and something is
         # missing, proactively open the checklist (with one-click fixes) so
         # the user is walked through the prerequisites.
         QTimer.singleShot(350, self._maybe_guide_first_setup)
+
+    # --- animated backdrop (artsy themes) -------------------------------
+
+    def _apply_backdrop(self):
+        theme = (cfgmod.load_config().get("ui") or {}).get("theme", DEFAULT_THEME)
+        scene = _THEME_BACKDROP.get(theme)
+        self._backdrop.set_scene(scene, _PALETTES.get(theme))
+        if scene:
+            self._backdrop.setGeometry(0, 0, self.width(), self.height())
+            self._backdrop.lower()
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._backdrop.setGeometry(0, 0, self.width(), self.height())
+        self._backdrop.lower()
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        self._backdrop.setGeometry(0, 0, self.width(), self.height())
+        self._backdrop.lower()
 
     # --- system tray ----------------------------------------------------
 
@@ -1428,6 +1762,7 @@ class MainWindow(QWidget):
         if app is not None:
             app.setStyleSheet(_build_stylesheet(_CURRENT_ACCENT, _CURRENT_THEME))
         self._rebuild_views("settings")
+        self._apply_backdrop()
 
     def _route(self):
         view = gl.choose_view(cfgmod.load_config(), tw.is_registered())
@@ -1652,6 +1987,7 @@ def main() -> int:
     _CURRENT_ACCENT = ui.get("accent", DEFAULT_ACCENT)
     _CURRENT_THEME = ui.get("theme", DEFAULT_THEME)
     app = QApplication(sys.argv)
+    _load_bundled_fonts()   # register the bundled pixel font etc.
     app.setStyleSheet(_build_stylesheet(_CURRENT_ACCENT, _CURRENT_THEME))
     # Keep the app alive when the window is closed — the tray icon controls
     # it. Real exit happens via the tray's "Beenden".
