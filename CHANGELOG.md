@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.11] - 2026-06-07
+
+### Fixed
+- **Connect that "does nothing" then times out is now diagnosable.** The
+  connection log is never empty: the app writes a preamble *before* firing the
+  elevated task and records the Scheduled Task's last-run result, so a failed
+  connect explains *why* instead of showing "No connection log yet." (Targets
+  the tester reports where Connect timed out with no log output.)
+- **"Services to stop" now keeps an emptied list.** Clearing the field and
+  saving previously reverted to the defaults (an empty list was treated as
+  "unset"); an explicitly-empty list is now respected on save and reload.
+
 ## [0.1.10] - 2026-06-07
 
 ### Fixed
