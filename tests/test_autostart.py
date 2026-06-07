@@ -1,7 +1,9 @@
 # tests/test_autostart.py
 # -*- coding: utf-8 -*-
-"""Tests for autostart.launch_command (no winreg / registry access)."""
+"""Tests for autostart (no winreg / registry access; XDG + LaunchAgent)."""
 
+import os
+import tempfile
 import unittest
 from unittest import mock
 
@@ -36,6 +38,43 @@ class TestLaunchCommand(unittest.TestCase):
             cmd = autostart.launch_command()
         self.assertIn("-m automatic_openconnect", cmd)
         self.assertIn("python.exe", cmd)
+
+
+class TestXdgAutostart(unittest.TestCase):
+    """Linux: an XDG autostart .desktop entry."""
+
+    def test_desktop_entry_content(self):
+        with mock.patch.object(autostart, "launch_argv",
+                               return_value=["/usr/bin/automatic-vpn"]):
+            entry = autostart._desktop_entry()
+        self.assertIn("[Desktop Entry]", entry)
+        self.assertIn("Type=Application", entry)
+        self.assertIn("Exec=/usr/bin/automatic-vpn", entry)
+
+    def test_enable_disable_roundtrip(self):
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.object(autostart.sys, "platform", "linux"), \
+                 mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": d}), \
+                 mock.patch.object(autostart, "launch_argv",
+                                   return_value=["/usr/bin/automatic-vpn"]):
+                self.assertFalse(autostart.is_enabled())
+                autostart.enable()
+                self.assertTrue(autostart.is_enabled())
+                self.assertTrue(os.path.exists(autostart._desktop_file()))
+                autostart.disable()
+                self.assertFalse(autostart.is_enabled())
+
+
+class TestLaunchAgent(unittest.TestCase):
+    """macOS: a LaunchAgent plist."""
+
+    def test_plist_content(self):
+        argv = ["/Applications/x.app/Contents/MacOS/x"]
+        with mock.patch.object(autostart, "launch_argv", return_value=argv):
+            plist = autostart._launch_agent_plist()
+        self.assertIn("<key>RunAtLoad</key>", plist)
+        self.assertIn("<key>ProgramArguments</key>", plist)
+        self.assertIn(argv[0], plist)
 
 
 if __name__ == "__main__":

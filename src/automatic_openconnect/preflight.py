@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import ntpath
 import os
+import sys
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -49,13 +50,18 @@ class Check:
 
 def check_openconnect(path: str = "") -> Check:
     # normalize_openconnect_path heals a folder / openconnect-gui.exe / stale
-    # path and auto-detects, so the check reflects the real openconnect.exe the
+    # path and auto-detects, so the check reflects the real openconnect the
     # backend will run — and a directory no longer shows up as a false "OK".
     resolved = normalize_openconnect_path(path)
     ok = bool(resolved) and os.path.isfile(resolved)
-    return Check("check.openconnect", ok,
-                 "" if ok else "fix.openconnect",
-                 "" if ok else "open_download")
+    if ok:
+        return Check("check.openconnect", True)
+    if sys.platform == "win32":
+        # Windows: the OpenConnect-GUI installer provides openconnect.exe.
+        return Check("check.openconnect", False, "fix.openconnect",
+                     "open_download")
+    # Linux / macOS: installed via the package manager (no download button).
+    return Check("check.openconnect", False, "fix.openconnect_unix", "")
 
 
 def _wintun_present(openconnect_path: str = "") -> bool:
@@ -253,14 +259,20 @@ def install_sso_command() -> List[str]:
 def check_all(email: Optional[str] = None,
               openconnect_path: str = "",
               openconnect_sso_path: str = "") -> List[Check]:
-    return [
-        check_openconnect(openconnect_path),
-        check_wintun(openconnect_path),
-        check_vpnc_script(openconnect_path),
+    checks = [check_openconnect(openconnect_path)]
+    # Wintun + the vpnc-script-win.js routing script are Windows-only concepts
+    # (a loose openconnect.exe ships without them). On Linux/macOS openconnect
+    # uses the kernel tun/utun device and its built-in vpnc-script, so these
+    # checks don't apply.
+    if sys.platform == "win32":
+        checks.append(check_wintun(openconnect_path))
+        checks.append(check_vpnc_script(openconnect_path))
+    checks += [
         check_openconnect_sso(openconnect_sso_path),
         check_config_toml(),
         check_credentials(email),
     ]
+    return checks
 
 
 def all_ok(checks: List[Check]) -> bool:

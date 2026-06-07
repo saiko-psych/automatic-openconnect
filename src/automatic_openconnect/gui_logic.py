@@ -85,8 +85,24 @@ def normalize_openconnect_path(path: str) -> str:
     return detect_openconnect() or p
 
 
+# Linux / macOS: openconnect usually comes from the package manager (pacman,
+# apt, Homebrew). PATH covers most cases; these are fallbacks for when the GUI
+# process's PATH is trimmed (e.g. launched from a .desktop entry).
+_UNIX_OPENCONNECT_PATHS = [
+    "/usr/sbin/openconnect",
+    "/usr/bin/openconnect",
+    "/opt/homebrew/bin/openconnect",   # macOS Apple Silicon (Homebrew)
+    "/usr/local/bin/openconnect",      # macOS Intel (Homebrew) / Linux local
+]
+
+
 def detect_openconnect() -> str:
-    """Best guess for openconnect.exe: known install paths, then PATH."""
+    """Best guess for the openconnect binary: known install paths, then PATH.
+
+    Cross-platform: the Windows install paths are harmless no-ops elsewhere
+    (the paths simply don't exist), and PATH + the Unix fallbacks cover Linux
+    and macOS.
+    """
     for p in _STD_OPENCONNECT_PATHS:
         if os.path.exists(p):
             return p
@@ -96,7 +112,13 @@ def detect_openconnect() -> str:
                             "openconnect.exe")
         if os.path.exists(cand):
             return cand
-    return shutil.which("openconnect") or ""
+    found = shutil.which("openconnect")
+    if found:
+        return found
+    for p in _UNIX_OPENCONNECT_PATHS:
+        if os.path.exists(p):
+            return p
+    return ""
 
 
 def detect_openconnect_sso() -> str:

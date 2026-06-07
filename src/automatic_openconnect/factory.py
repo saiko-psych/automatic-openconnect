@@ -10,9 +10,10 @@ This lets main.py do::
 
 and get the right implementation per OS:
 
-  * Linux  -> utils.auto_vpn.auto_vpn_session (openconnect-sso + xvfb-run)
-  * Windows -> utils.auto_vpn_win.auto_vpn_session_win (openconnect.exe, no sudo)
-  * macOS / unknown -> noop context manager that yields None
+  * Linux  -> _linux.auto_vpn_session (openconnect-sso + xvfb-run)
+  * Windows -> _windows.auto_vpn_session_win (openconnect.exe, no sudo)
+  * macOS  -> _darwin.auto_vpn_session (openconnect-sso, no xvfb, sudo)
+  * unknown -> noop context manager that yields None
 
 If the user explicitly disables auto_vpn in config.json (or omits it),
 all backends honor the no-op contract regardless of OS.
@@ -48,7 +49,10 @@ def make_vpn_session(config_data: dict):
     if sys.platform == "win32":
         from ._windows import auto_vpn_session_win
         return auto_vpn_session_win(config_data)
-    # macOS or unknown - silently skip. The pre-flight warning in
+    if sys.platform == "darwin":
+        from ._darwin import auto_vpn_session
+        return auto_vpn_session(config_data)
+    # unknown platform - silently skip. The pre-flight warning in
     # utils.vpn still surfaces if EWS is unreachable.
     return _noop_session()
 
