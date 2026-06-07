@@ -228,6 +228,39 @@ def last_run_result(task: str) -> Optional[int]:
     return parse_last_result(result.stdout or "")
 
 
+def parse_task_action(query_output: str) -> Optional[str]:
+    """The 'Task To Run' (executable + arguments) line from
+    ``schtasks /query /v /fo LIST``. Handles the English ("Task To Run") and
+    German ("Auszuführende Aufgabe") labels (the umlaut may be mangled by the
+    console code page, so match a prefix)."""
+    for raw in (query_output or "").splitlines():
+        if ":" not in raw:
+            continue
+        label, _, value = raw.partition(":")
+        low = label.strip().lower()
+        if "task to run" in low or low.startswith("auszuf"):
+            return value.strip() or None
+    return None
+
+
+def task_action(task: str) -> Optional[str]:
+    """The task's 'Task To Run' string (Execute + Arguments), or ``None``.
+    No elevation; best-effort diagnostics helper."""
+    try:
+        result = subprocess.run(
+            ["schtasks", "/query", "/tn", task, "/v", "/fo", "LIST"],
+            creationflags=_NO_WINDOW,
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
+            errors="replace", timeout=10,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    return parse_task_action(result.stdout or "")
+
+
 def describe_last_result(code: Optional[int]) -> str:
     """Human-readable hint for a task's last-run result code.
 

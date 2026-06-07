@@ -200,3 +200,21 @@ class TestDescribeLastResult(unittest.TestCase):
         msg = tw.describe_last_result(0x80070002)
         self.assertIn("0x80070002", msg)
         self.assertIn("failed", msg.lower())
+
+
+class TestParseTaskAction(unittest.TestCase):
+    def test_english_label(self):
+        out = ("HostName: PC\n"
+               'Task To Run:   C:\\App\\automatic-vpn.exe up --config "C:\\c.json"\n'
+               "Start In:  N/A\n")
+        self.assertEqual(
+            tw.parse_task_action(out),
+            'C:\\App\\automatic-vpn.exe up --config "C:\\c.json"')
+
+    def test_german_label_prefix(self):
+        # the umlaut may be mangled by the console code page → prefix match
+        out = "Auszufhrende Aufgabe: C:\\x.exe up\n"
+        self.assertEqual(tw.parse_task_action(out), "C:\\x.exe up")
+
+    def test_missing_returns_none(self):
+        self.assertIsNone(tw.parse_task_action("HostName: PC\nStatus: Ready\n"))

@@ -812,6 +812,44 @@ def _cli_down(args) -> int:
     return 0
 
 
+def _cli_diag(args) -> int:
+    """Print environment diagnostics (NO connect) so a failed Connect can be
+    pinpointed in ONE shot: where the exe is, whether it's frozen, elevation,
+    the config + tool paths, and the log path. Output goes to stdout (the GUI
+    captures it when it runs '<exe> diag') AND is appended to the connect log.
+    This is what proves whether the exe can run in CLI mode on a given machine.
+    """
+    import os
+    import platform
+    info = []
+    info.append(f"exe={sys.executable!r}")
+    info.append(f"frozen={getattr(sys, 'frozen', False)}")
+    info.append(f"argv={sys.argv}")
+    info.append(f"python={sys.version.split()[0]} {platform.platform()}")
+    info.append(f"pid={os.getpid()} cwd={os.getcwd()!r}")
+    try:
+        import ctypes
+        info.append(f"is_admin={bool(ctypes.windll.shell32.IsUserAnAdmin())}")
+    except Exception as exc:
+        info.append(f"is_admin=?({exc})")
+    info.append(f"config={args.config!r} exists={os.path.isfile(args.config)}")
+    try:
+        av = (_load_config(args.config).get("auto_vpn") or {})
+        for key in ("openconnect_path", "openconnect_sso_path"):
+            p = av.get(key, "")
+            info.append(f"{key}={p!r} exists={os.path.isfile(p) if p else False}")
+    except Exception as exc:
+        info.append(f"config-load-error={exc}")
+    info.append(f"connect_log={connect_log_path(args.config)!r}")
+    block = "[auto_vpn_win] DIAG: " + " | ".join(info)
+    print(block)
+    try:
+        append_connect_log(args.config, block)
+    except Exception:
+        pass
+    return 0
+
+
 def _build_cli_parser():
     """Build the stand-alone CLI parser.
 
@@ -834,12 +872,15 @@ def _build_cli_parser():
                    help="Tear down a running tunnel + restart Cisco/Mullvad")
     sub.add_parser("status", parents=[common],
                    help="Print whether openconnect.exe is running")
+    sub.add_parser("diag", parents=[common],
+                   help="Print environment diagnostics (no connect)")
     return parser
 
 
 def main_cli() -> int:
     args = _build_cli_parser().parse_args()
-    dispatch = {"up": _cli_up, "down": _cli_down, "status": _cli_status}
+    dispatch = {"up": _cli_up, "down": _cli_down, "status": _cli_status,
+                "diag": _cli_diag}
     return dispatch[args.cmd](args)
 
 

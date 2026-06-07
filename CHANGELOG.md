@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.12] - 2026-06-07
+
+### Changed
+- **One-shot connect diagnostics.** When Connect times out with no backend
+  output, the log now records everything needed to pinpoint the cause in a
+  single run: the Scheduled Task's actual action (exe + arguments), whether
+  that exe exists and matches the running app, a `last-connect.error`
+  breadcrumb, and — decisively — the output of running the same exe with a new
+  hidden `diag` subcommand directly (no connect). This distinguishes "the exe
+  can't run in CLI mode" from "the elevated task launch is being blocked"
+  (e.g. antivirus/device policy on the unsigned exe).
+
 ## [0.1.11] - 2026-06-07
 
 ### Fixed

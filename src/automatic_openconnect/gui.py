@@ -174,6 +174,18 @@ def _build_stylesheet(accent: str = DEFAULT_ACCENT,
     return s
 
 
+def _cmdline_exe(cmdline: str) -> str:
+    """Extract the executable path from a 'Task To Run' command line
+    (handles a quoted path with spaces)."""
+    if not cmdline:
+        return ""
+    s = cmdline.strip()
+    if s.startswith('"'):
+        end = s.find('"', 1)
+        return s[1:end] if end > 0 else s[1:]
+    return s.split(" ", 1)[0]
+
+
 def _wrap(layout) -> QWidget:
     """Wrap a layout in a QWidget (for QFormLayout.addRow)."""
     w = QWidget()
@@ -880,13 +892,7 @@ class ControlView(QWidget):
             except Exception:
                 code = None
             if not backend_ran:
-                append_connect_log(
-                    cfg_path,
-                    f"[gui] timed out with no backend output — "
-                    f"{tw.describe_last_result(code)}. The Scheduled Task fired "
-                    "but the VPN backend never ran. Likely causes: the task "
-                    "action/arguments are wrong for this build, the app exe "
-                    "moved, or a stale 'running' instance blocked the new run.")
+                self._dump_no_backend_diagnostics(cfg_path, code)
             else:
                 append_connect_log(
                     cfg_path,
@@ -895,6 +901,72 @@ class ControlView(QWidget):
                     "login or route setup). See the lines above.")
         except Exception:
             pass
+
+    def _dump_no_backend_diagnostics(self, cfg_path: str, code) -> None:
+        """Append a COMPLETE, one-shot diagnostic when the task fired but the
+        backend produced no output — so the cause is unambiguous from a single
+        run. Best-effort; never raises."""
+        import subprocess
+        lines = [
+            f"[gui] TIMED OUT, no backend output — {tw.describe_last_result(code)}.",
+            "[gui] The Scheduled Task fired but the backend (_cli_up) never ran. "
+            "One-shot diagnostics:",
+            f"[gui]   task registered: {tw.is_registered()}",
+        ]
+        action = None
+        try:
+            action = tw.task_action(tw.TASK_UP)
+        except Exception:
+            pass
+        lines.append(f"[gui]   task action:    {action or '(could not read)'}")
+        task_exe = _cmdline_exe(action)
+        if task_exe:
+            lines.append(f"[gui]   task exe exists: {os.path.isfile(task_exe)}"
+                         f"  ({task_exe})")
+        lines.append(f"[gui]   this GUI exe:    {sys.executable}"
+                     f"  (frozen={getattr(sys, 'frozen', False)})")
+        if task_exe and os.path.isfile(sys.executable) and \
+                os.path.normcase(task_exe) != os.path.normcase(sys.executable):
+            lines.append("[gui]   NOTE: task exe != current exe — the app was "
+                         "moved/renamed since setup; re-run setup to re-register.")
+        try:
+            errp = os.path.join(os.path.dirname(connect_log_path(cfg_path)),
+                                "last-connect.error")
+            if os.path.isfile(errp):
+                with open(errp, encoding="utf-8", errors="replace") as f:
+                    lines.append("[gui]   last-connect.error: "
+                                 + f.read().strip()[:600])
+            else:
+                lines.append("[gui]   last-connect.error: (none)")
+        except Exception:
+            pass
+        lines.append(f"[gui]   config exists:   {os.path.isfile(cfg_path)}")
+        # Decisive test: run the SAME exe with 'diag' directly (non-elevated,
+        # no connect). If it prints the DIAG block → the exe + CLI dispatch work,
+        # so the ELEVATED task launch is being blocked (antivirus / device policy
+        # / elevation). If it prints nothing → the exe can't run CLI mode here.
+        diag_exe = task_exe if (task_exe and os.path.isfile(task_exe)) \
+            else sys.executable
+        try:
+            r = subprocess.run(
+                [diag_exe, "diag", "--config", cfg_path],
+                capture_output=True, text=True, timeout=25,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            out = ((r.stdout or "") + (r.stderr or "")).strip()
+            lines.append(f"[gui]   direct '{os.path.basename(diag_exe)} diag' "
+                         f"→ exit {r.returncode}:")
+            lines.append("        " + (out[:1500] if out else
+                         "(NO OUTPUT — the exe produced nothing in CLI mode! it "
+                         "cannot run the backend on this machine at all)"))
+        except Exception as exc:
+            lines.append(f"[gui]   could not run "
+                         f"'{os.path.basename(diag_exe)} diag': {exc}")
+        lines.append("[gui] Read this: if the action + exe look right AND the "
+                     "direct diag WORKED, an antivirus/device policy is blocking "
+                     "the unsigned exe when the Scheduled Task launches it "
+                     "(interactive 'Run anyway' does NOT cover that). Re-run "
+                     "setup to re-register; otherwise send this whole log.")
+        append_connect_log(cfg_path, "\n".join(lines))
 
     def refresh(self):
         up = is_vpn_up()
@@ -1686,7 +1758,7 @@ def run() -> int:
     otherwise launch the GUI. This lets one executable serve both the
     double-clickable app AND the elevated Scheduled Task (`automatic-vpn.exe
     up --config ...`)."""
-    if sys.argv[1:2] and sys.argv[1] in ("up", "down", "status"):
+    if sys.argv[1:2] and sys.argv[1] in ("up", "down", "status", "diag"):
         from ._windows import main_cli
         return main_cli()
     return main()
