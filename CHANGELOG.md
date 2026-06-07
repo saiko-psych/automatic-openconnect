@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.13] - 2026-06-07
+
+### Changed
+- **Even deeper connect diagnostics.** Every exe launch now writes an entry
+  breadcrumb (timestamp, argv, elevation, pid) to `last-entry.log` *before any
+  import*, and the CLI dispatch points (`main_cli`, `_cli_up`) breadcrumb too.
+  So a failing elevated Scheduled-Task launch shows exactly how far it gets —
+  Python never starting (bootloader/launch blocked) vs. reaching the backend.
+  The timeout diagnostic now includes these breadcrumbs.
+
 ## [0.1.12] - 2026-06-07
 
 ### Changed

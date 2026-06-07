@@ -941,6 +941,17 @@ class ControlView(QWidget):
         except Exception:
             pass
         lines.append(f"[gui]   config exists:   {os.path.isfile(cfg_path)}")
+        # Entry breadcrumbs: did the ELEVATED task's Python even start? (Each
+        # exe launch writes here before any heavy import.) If there's no
+        # admin=True / 'up' line near the connect time, Python never started
+        # under the elevated task → the PyInstaller bootloader failed under
+        # elevation (not a code bug).
+        try:
+            from . import _diag
+            lines.append("[gui]   last-entry.log (exe Python-start breadcrumbs):")
+            lines.append(_diag.read_recent())
+        except Exception:
+            pass
         # Decisive test: run the SAME exe with 'diag' directly (non-elevated,
         # no connect). If it prints the DIAG block → the exe + CLI dispatch work,
         # so the ELEVATED task launch is being blocked (antivirus / device policy

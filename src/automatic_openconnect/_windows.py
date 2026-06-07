@@ -751,6 +751,11 @@ def _record_redirect_failure(config_path: str, exc: BaseException) -> None:
 
 
 def _cli_up(args) -> int:
+    try:
+        from ._diag import breadcrumb
+        breadcrumb("cli_up")
+    except Exception:
+        pass
     # First line as EARLY as possible so an empty log unambiguously means the
     # backend process never started (vs. crashed mid-setup, which leaves a
     # traceback). Written before _load_config so a malformed config still logs.
@@ -878,6 +883,11 @@ def _build_cli_parser():
 
 
 def main_cli() -> int:
+    try:
+        from ._diag import breadcrumb
+        breadcrumb("main_cli")
+    except Exception:
+        pass
     args = _build_cli_parser().parse_args()
     dispatch = {"up": _cli_up, "down": _cli_down, "status": _cli_status,
                 "diag": _cli_diag}
