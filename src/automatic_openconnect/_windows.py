@@ -606,6 +606,55 @@ def _stop_tunnel_by_proc(proc: Optional[subprocess.Popen]) -> None:
 
 # --- public context manager ---------------------------------------------
 
+# Consecutive auto-reconnect attempts before giving up. The heartbeat watchdog
+# keeps running, so the user can still reconnect manually afterwards.
+_MAX_RECONNECT_ATTEMPTS = 15
+
+
+class _WinVpnSession:
+    """Owns the openconnect tunnel for one ``auto_vpn_session_win``. Exposes
+    ``alive()`` and ``reconnect()`` so a monitor loop can re-establish the
+    tunnel after a network drop WITHOUT restarting the conflicting services
+    (re-auth only — no service flapping)."""
+
+    def __init__(self, cfg: dict):
+        self._cfg = cfg
+        self.proc: Optional[subprocess.Popen] = None
+        self.stopped_services: List[str] = []
+
+    def start(self) -> None:
+        # Clear any orphaned openconnect-sso browser / stale openconnect from a
+        # previous aborted attempt before starting a fresh one.
+        _kill_stale_processes()
+        _check_keyring_credentials(self._cfg)
+        # Stop conflicting VPN services *before* we authenticate, in case
+        # Mullvad's routing would mask the SAML POST. They stay stopped for the
+        # whole session — reconnects do NOT touch them.
+        self.stopped_services = _stop_conflicting_services(self._cfg)
+        self._bring_up()
+
+    def _bring_up(self) -> None:
+        host, cookie, fingerprint = _authenticate(self._cfg)
+        try:
+            self.proc = _start_tunnel(host, cookie, fingerprint, self._cfg)
+        finally:
+            del cookie  # drop the sensitive cookie from this frame
+
+    def alive(self) -> bool:
+        return self.proc is not None and self.proc.poll() is None
+
+    def reconnect(self) -> None:
+        """Re-establish the tunnel after a drop: clear the dead openconnect (and
+        any stale sso) and re-authenticate UNATTENDED (stored creds + TOTP).
+        Conflicting services stay stopped, so no flapping."""
+        _kill_stale_processes()
+        self._bring_up()
+
+    def teardown(self) -> None:
+        _stop_tunnel_by_proc(self.proc)
+        _restart_services(self.stopped_services)
+
+
 @contextmanager
 def auto_vpn_session_win(config_data: dict):
     """Context manager: open VPN tunnel around the wrapped block.
@@ -614,7 +663,9 @@ def auto_vpn_session_win(config_data: dict):
     factory utils.vpn_provider.make_vpn_session() can pick either
     transparently.
 
-    No-op when config_data['auto_vpn'].enabled is not True.
+    Yields a :class:`_WinVpnSession` handle (``alive()``/``reconnect()``) while
+    this process owns the tunnel, or ``None`` when auto_vpn is disabled or the
+    tunnel was already up (nothing to own, reconnect or tear down).
     """
     cfg = (config_data.get("auto_vpn") or {})
     if not cfg.get("enabled"):
@@ -630,39 +681,28 @@ def auto_vpn_session_win(config_data: dict):
 
     server = cfg.get("server", "univpn.uni-graz.at")
     server_hint = server.split(".")[0]
-    was_already_up = is_vpn_up(server_hint)
+    if is_vpn_up(server_hint):
+        # Already up and we didn't start it → don't own it (no reconnect, no
+        # teardown), matching the previous behaviour.
+        yield None
+        return
 
-    proc: Optional[subprocess.Popen] = None
-    stopped_services: List[str] = []
-
-    if not was_already_up:
-        # Clear any orphaned openconnect-sso browser / stale openconnect from
-        # a previous aborted attempt before starting a fresh one.
-        _kill_stale_processes()
-        _check_keyring_credentials(cfg)
-        # Stop conflicting VPN services *before* we authenticate, in
-        # case Mullvad's routing would have masked the SAML POST.
-        stopped_services = _stop_conflicting_services(cfg)
-        try:
-            host, cookie, fingerprint = _authenticate(cfg)
-            proc = _start_tunnel(host, cookie, fingerprint, cfg)
-        except BaseException:
-            # Symmetric with Linux: clean up if we crashed mid-setup.
-            print("[auto_vpn_win] Setup failed - cleaning up partial tunnel",
-                  file=sys.stderr)
-            _stop_tunnel_by_proc(proc)
-            _restart_services(stopped_services)
-            raise
-        # Sensitive: drop the cookie reference from this frame.
-        del cookie
+    sess = _WinVpnSession(cfg)
+    try:
+        sess.start()
+    except BaseException:
+        # Symmetric with Linux: clean up if we crashed mid-setup.
+        print("[auto_vpn_win] Setup failed - cleaning up partial tunnel",
+              file=sys.stderr)
+        sess.teardown()
+        raise
 
     try:
-        yield True
+        yield sess
     finally:
-        if cfg.get("down_on_exit", True) and not was_already_up:
+        if cfg.get("down_on_exit", True):
             print("[auto_vpn_win] Closing tunnel", file=sys.stderr)
-            _stop_tunnel_by_proc(proc)
-            _restart_services(stopped_services)
+            sess.teardown()
 
 
 # --- standalone CLI -----------------------------------------------------
@@ -766,22 +806,52 @@ def _cli_up(args) -> int:
     cfg.setdefault("auto_vpn", {})
     cfg["auto_vpn"]["enabled"] = True
     from . import session
+    auto_reconnect = bool(cfg["auto_vpn"].get("auto_reconnect", True))
     try:
-        with auto_vpn_session_win(cfg):
+        with auto_vpn_session_win(cfg) as sess:
             print("[auto_vpn_win] Tunnel is up. Press Ctrl-C to disconnect.",
                   file=sys.stderr)
+            reconnect_fails = 0
             try:
-                # Watchdog: if a GUI started this connection and then died
-                # unexpectedly (crash / hard kill) without opting into
-                # background operation, its heartbeat goes stale — tear the
-                # tunnel down so it never lingers invisibly. CLI-only use
-                # (no session file) keeps running indefinitely.
+                # Monitor loop. Two jobs:
+                #  * Watchdog: if a GUI started this connection and then died
+                #    (crash / hard kill) without opting into background
+                #    operation, its heartbeat goes stale → tear down so the
+                #    tunnel never lingers invisibly. (CLI-only use has no
+                #    session file, so should_teardown stays False.)
+                #  * Auto-reconnect: if openconnect dies (a brief network
+                #    outage) while we own the tunnel, re-establish it
+                #    unattended (re-auth via stored creds + TOTP).
                 while True:
                     time.sleep(5)
                     if session.should_teardown(time.time()):
                         print("[auto_vpn_win] GUI heartbeat lost — tearing "
                               "down tunnel", file=sys.stderr)
                         break
+                    if not (auto_reconnect and sess is not None) or sess.alive():
+                        reconnect_fails = 0
+                        continue
+                    if reconnect_fails >= _MAX_RECONNECT_ATTEMPTS:
+                        continue  # gave up reconnecting; keep watching heartbeat
+                    reconnect_fails += 1
+                    print(f"[auto_vpn_win] tunnel dropped — reconnecting "
+                          f"(attempt {reconnect_fails}/"
+                          f"{_MAX_RECONNECT_ATTEMPTS})…", file=sys.stderr)
+                    sys.stderr.flush()
+                    try:
+                        sess.reconnect()
+                        reconnect_fails = 0
+                        print("[auto_vpn_win] reconnected.", file=sys.stderr)
+                    except BaseException as exc:  # noqa: BLE001
+                        print(f"[auto_vpn_win] reconnect failed: {exc}",
+                              file=sys.stderr)
+                        if reconnect_fails >= _MAX_RECONNECT_ATTEMPTS:
+                            print("[auto_vpn_win] giving up auto-reconnect — "
+                                  "reconnect manually once the network is back.",
+                                  file=sys.stderr)
+                        else:
+                            time.sleep(min(30, 5 * reconnect_fails))  # backoff
+                    sys.stderr.flush()
             except KeyboardInterrupt:
                 print("\n[auto_vpn_win] Ctrl-C received, tearing down",
                       file=sys.stderr)

@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.19] - 2026-06-08
+
+### Added
+- **Auto-reconnect after a network drop.** If `openconnect` dies (e.g. a brief
+  Wi-Fi/network outage) while the app owns the tunnel, the background task now
+  re-establishes it automatically and unattended (saved credentials + 2FA),
+  WITHOUT restarting the conflicting VPN services (no flapping). Backs off
+  between attempts and gives up after 15 consecutive failures (the heartbeat
+  watchdog keeps running, so you can reconnect manually). Set
+  `auto_vpn.auto_reconnect = false` in config.json to disable.
+
 ## [0.1.18] - 2026-06-08
 
 ### Fixed

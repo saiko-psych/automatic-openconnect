@@ -22,6 +22,7 @@ from automatic_openconnect._windows import (
     is_vpn_up,
     _build_cli_parser,
     _cli_down,
+    _WinVpnSession,
 )
 from automatic_openconnect._linux import VPNError
 
@@ -466,6 +467,47 @@ class TestConnectLog(unittest.TestCase):
         finally:
             sys.stdout, sys.stderr = saved_out, saved_err
         self.assertTrue(any("bringing tunnel up" in s for s in written))
+
+
+class TestAutoReconnect(unittest.TestCase):
+    """The _WinVpnSession handle exposes alive()/reconnect() so the up-task can
+    re-establish the tunnel after a network drop WITHOUT flapping services."""
+
+    def _session(self):
+        return _WinVpnSession({"user_email": "x@example.org"})
+
+    def test_alive_false_without_proc(self):
+        self.assertFalse(self._session().alive())
+
+    def test_alive_true_while_proc_running(self):
+        s = self._session()
+        s.proc = mock.Mock()
+        s.proc.poll.return_value = None      # still running
+        self.assertTrue(s.alive())
+
+    def test_alive_false_after_proc_exits(self):
+        s = self._session()
+        s.proc = mock.Mock()
+        s.proc.poll.return_value = 1         # openconnect exited (network drop)
+        self.assertFalse(s.alive())
+
+    def test_reconnect_reauths_without_touching_services(self):
+        s = self._session()
+        s.stopped_services = ["csc_vpnagent"]
+        new_proc = mock.Mock()
+        with mock.patch("automatic_openconnect._windows._kill_stale_processes") as kill, \
+             mock.patch("automatic_openconnect._windows._authenticate",
+                        return_value=("host", "cookie", "fp")), \
+             mock.patch("automatic_openconnect._windows._start_tunnel",
+                        return_value=new_proc) as start, \
+             mock.patch("automatic_openconnect._windows._stop_conflicting_services") as stop_svc, \
+             mock.patch("automatic_openconnect._windows._restart_services") as restart:
+            s.reconnect()
+            kill.assert_called_once()      # clears the dead openconnect first
+            start.assert_called_once()     # re-spawned the tunnel
+            self.assertIs(s.proc, new_proc)
+            stop_svc.assert_not_called()   # services NOT flapped on reconnect
+            restart.assert_not_called()
 
 
 if __name__ == "__main__":
