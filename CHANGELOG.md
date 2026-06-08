@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.17] - 2026-06-08
+
+### Added
+- **Automatic background-task update.** When the elevated connect/disconnect
+  tasks were registered by an older version (e.g. before the on-battery fix in
+  0.1.16), the app detects it at startup (stored `task_version`) and offers a
+  one-click re-register (one admin prompt) — so existing users get task fixes
+  without having to know to open Configuration → Save. Setup also re-registers
+  automatically when the stored task definition is outdated.
+
 ## [0.1.16] - 2026-06-08
 
 ### Fixed

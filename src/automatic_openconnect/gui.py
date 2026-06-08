@@ -779,6 +779,8 @@ class SetupView(QWidget):
         # Merge into the existing config so we never clobber the ui block
         # (language, close-on-exit preference) when reconfiguring.
         data = cfgmod.load_config()
+        stored_task_ver = int((data.get("auto_vpn") or {}).get("task_version", 0)
+                              or 0)
         slot = int(self.token_slot.currentData() or 0)
         data["auto_vpn"] = gl.build_auto_vpn_config(
             email=fields["email"], server=fields["server"],
@@ -798,22 +800,22 @@ class SetupView(QWidget):
         except OSError:
             pass
 
-        # Register the elevated tasks only the first time (the one UAC prompt).
-        # The elevated Scheduled Task is registered against a STABLE copy of
-        # the exe in %LOCALAPPDATA%\Programs (out of Downloads): testing showed
-        # the Task Scheduler launch of the exe from Downloads silently fails to
-        # start Python (exit 0, no backend), while the very same exe run
-        # elevated from elsewhere works. The copy also strips the
-        # Mark-of-the-Web and survives the user moving/deleting the download.
+        # The elevated task is registered against a stable copy of the exe in
+        # %LOCALAPPDATA%\Programs (survives the user moving/deleting the
+        # download; Mark-of-the-Web stripped). NOTE: the location was NOT the
+        # cause of the old "task fires but backend never runs" bug — that was
+        # the Scheduled Task's default DisallowStartIfOnBatteries (laptop on
+        # battery), fixed via TASK_VERSION 2 in build_register_script.
         exe_for_task = _ensure_stable_exe()
         frozen = getattr(sys, "frozen", False)
-        # Register on first setup, OR re-register if the task points at a
-        # different exe than the stable copy (e.g. it still points to Downloads
-        # from an earlier version, or the app was updated). Re-registering costs
-        # one UAC prompt — only done when the target actually changed.
+        # Re-register (one UAC prompt) on first setup, OR when the task settings
+        # are out of date (stored task_version < current — e.g. the battery
+        # fix), OR when the task points at a different exe than the stable copy.
         need_register = not tw.is_registered()
         already_registered = not need_register
-        if already_registered and frozen:
+        if already_registered and stored_task_ver < tw.TASK_VERSION:
+            need_register = True
+        elif already_registered and frozen:
             try:
                 cur_exe = _cmdline_exe(tw.task_action(tw.TASK_UP) or "")
                 if cur_exe and os.path.normcase(cur_exe) != \
@@ -827,6 +829,9 @@ class SetupView(QWidget):
             except Exception as exc:  # VPNError or subprocess failure
                 QMessageBox.critical(self, t("setup.failed"), str(exc))
                 return
+            # Record the task definition version so we don't keep re-prompting.
+            data["auto_vpn"]["task_version"] = tw.TASK_VERSION
+            cfgmod.save_config(data)
 
         # Commit credentials only once the elevated task actually exists.
         if self.pw.text():
@@ -1632,7 +1637,35 @@ class MainWindow(QWidget):
         # Prerequisites are now shown inline in the setup form (PrereqPanel),
         # so a new user already sees what's missing + the install buttons in
         # one place — no separate dialog needs to pop up here anymore.
-        return
+        self._maybe_offer_task_update()
+
+    def _maybe_offer_task_update(self):
+        """Offer a one-click re-register when the elevated tasks were created by
+        an older version (stored task_version < current — e.g. before the
+        on-battery fix), so the user doesn't have to know to open
+        Configuration → Save to pick up the new task settings."""
+        if sys.platform != "win32":
+            return
+        try:
+            av = (cfgmod.load_config().get("auto_vpn") or {})
+            if not tw.is_registered():
+                return
+            if int(av.get("task_version", 0) or 0) >= tw.TASK_VERSION:
+                return
+        except Exception:
+            return
+        if QMessageBox.question(self, t("taskupd.title"), t("taskupd.msg")) \
+                != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            tw.register(_ensure_stable_exe(), str(cfgmod.config_path()),
+                        frozen=getattr(sys, "frozen", False))
+            data = cfgmod.load_config()
+            data.setdefault("auto_vpn", {})["task_version"] = tw.TASK_VERSION
+            cfgmod.save_config(data)
+            QMessageBox.information(self, t("taskupd.title"), t("taskupd.done"))
+        except Exception as exc:  # VPNError / cancelled UAC
+            QMessageBox.warning(self, t("taskupd.title"), str(exc))
 
     def _show_control(self):
         # Returning from setup may have toggled the hotkey preference.

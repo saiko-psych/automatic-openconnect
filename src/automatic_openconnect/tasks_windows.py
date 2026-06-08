@@ -23,6 +23,12 @@ from .core import VPNError
 TASK_UP = "AutoOpenconnect-Up"
 TASK_DOWN = "AutoOpenconnect-Down"
 
+# Bumped whenever the registered task definition changes in a way existing
+# installs must pick up (stored as auto_vpn.task_version in config). v2 added
+# -AllowStartIfOnBatteries (laptops on battery silently skipped the action).
+# The GUI offers a one-click re-register when the stored version is older.
+TASK_VERSION = 2
+
 # Hide the console window of schtasks/powershell helpers. The GUI runs
 # windowless (pythonw.exe), so a console child without this flag would pop
 # its own black window. 0 on non-Windows.

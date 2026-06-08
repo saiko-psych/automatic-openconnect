@@ -218,3 +218,18 @@ class TestParseTaskAction(unittest.TestCase):
 
     def test_missing_returns_none(self):
         self.assertIsNone(tw.parse_task_action("HostName: PC\nStatus: Ready\n"))
+
+
+class TestBatterySettings(unittest.TestCase):
+    """Regression guard for the on-battery fix: New-ScheduledTaskSettingsSet
+    defaults DisallowStartIfOnBatteries=$true, so without these flags a laptop
+    on battery silently never runs the task action."""
+
+    def test_register_script_allows_running_on_battery(self):
+        script = tw.build_register_script(
+            r"C:\app\automatic-vpn.exe", r"C:\cfg.json", frozen=True)
+        self.assertIn("-AllowStartIfOnBatteries", script)
+        self.assertIn("-DontStopIfGoingOnBatteries", script)
+
+    def test_task_version_bumped_for_battery_fix(self):
+        self.assertGreaterEqual(tw.TASK_VERSION, 2)

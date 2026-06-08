@@ -91,6 +91,20 @@ _STRINGS: dict[str, dict[str, str]] = {
     "setup.saved_msg": {
         "en": "Changes saved.",
         "de": "Änderungen gespeichert."},
+    # one-click task re-register when the stored definition is outdated
+    "taskupd.title": {"en": "Update background task",
+                      "de": "Hintergrund-Task aktualisieren"},
+    "taskupd.msg": {
+        "en": ("Your background connect/disconnect tasks were set up by an "
+               "older version and need a quick one-time update (so they also "
+               "work on battery). Update now? This needs one admin prompt."),
+        "de": ("Deine Hintergrund-Tasks zum Verbinden/Trennen stammen von "
+               "einer älteren Version und brauchen ein kurzes einmaliges "
+               "Update (damit sie auch im Akku-Betrieb laufen). Jetzt "
+               "aktualisieren? Dafür kommt ein Admin-Dialog.")},
+    "taskupd.done": {
+        "en": "Background tasks updated.",
+        "de": "Hintergrund-Tasks aktualisiert."},
     # validation errors
     "err.email_empty": {"en": "Email must not be empty.",
                         "de": "E-Mail darf nicht leer sein."},
