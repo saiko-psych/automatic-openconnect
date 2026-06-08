@@ -28,6 +28,8 @@ a = Analysis(
         "pynput",
         "pynput.keyboard._win32",
         "pynput.mouse._win32",
+        # QtNetwork is imported lazily (single-instance QLocalServer/Socket).
+        "PyQt6.QtNetwork",
     ],
     hookspath=[],
     hooksconfig={},

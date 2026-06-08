@@ -3,6 +3,30 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.18] - 2026-06-08
+
+### Fixed
+- **Connection no longer drops randomly / after a few minutes** (the main
+  regression since 0.1.11). The watchdog heartbeat (tells the backend "the GUI
+  is alive") was written on the UI thread, and the 0.1.11/0.1.12 timeout
+  diagnostics (synchronous schtasks + `diag` subprocess, up to ~45s) could
+  block it long enough for the backend to tear down a LIVE tunnel — typically
+  while a slow SAML/2FA login was finishing. The heartbeat now runs on its own
+  dedicated daemon thread (immune to UI stalls and to a transiently-failing
+  process check), and the diagnostics run off the UI thread.
+- **Only one instance of the app can run.** Launching it again surfaces the
+  existing window instead of opening a second GUI (two GUIs both fired tasks +
+  heartbeats and could tear down each other's connection).
+- **A single click on the tray icon no longer disconnects** — it only shows the
+  window. Connect/Disconnect stay explicit (tray menu + in-app buttons); an
+  accidental click used to hard-stop the tunnel.
+- **More robust quit/teardown** — quitting no longer skips the
+  disconnect/keep-in-background prompt when the liveness check momentarily flakes.
+
+### Known / next
+- Auto-reconnect after a brief network outage is **not** yet implemented (the
+  backend does not yet restart openconnect if it dies) — planned next.
+
 ## [0.1.17] - 2026-06-08
 
 ### Added

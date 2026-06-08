@@ -17,6 +17,7 @@ import sys
 
 import importlib.resources as _ir
 import os
+import threading
 import time
 import webbrowser
 
@@ -912,10 +913,49 @@ class ControlView(QWidget):
         grid.addWidget(self.bug_btn, 2, 0, 1, 2)
         root.addLayout(grid)
 
+        # Watchdog heartbeat runs on its OWN daemon thread (NOT the UI timer):
+        # the backend up-task tears the tunnel down if the heartbeat goes stale
+        # (>15s), and the UI thread can stall far longer than that (modal
+        # dialogs, the synchronous timeout-diagnostics) — which used to starve
+        # the heartbeat and kill a live tunnel mid-connect. A dedicated thread
+        # is immune to UI stalls AND to a transiently-flaky is_vpn_up().
+        self._hb_stop = threading.Event()
+        self._hb_thread = None
+
         self._timer = QTimer(self)
         self._timer.timeout.connect(self.refresh)
         self._timer.start(2000)
         self.refresh()
+
+    def _owns_session(self) -> bool:
+        """True while this GUI is keeping a connection's watchdog alive."""
+        return bool(self._hb_thread and self._hb_thread.is_alive())
+
+    def _start_heartbeat(self) -> None:
+        """Begin (or refresh) the watchdog heartbeat on a daemon thread."""
+        session.write_heartbeat(time.time(), background_ok=False)
+        if self._owns_session():
+            return
+        self._hb_stop.clear()
+        self._hb_thread = threading.Thread(
+            target=self._heartbeat_loop, name="vpn-heartbeat", daemon=True)
+        self._hb_thread.start()
+
+    def _heartbeat_loop(self) -> None:
+        # wait() returns True the moment _hb_stop is set → clean exit; False on
+        # the 3s timeout → write another heartbeat. 3s « the 15s stale window.
+        while not self._hb_stop.wait(3.0):
+            session.write_heartbeat(time.time(), background_ok=False)
+
+    def _stop_heartbeat(self) -> None:
+        self._hb_stop.set()
+        th = self._hb_thread
+        # Join briefly so a final background_ok=True write can't be overwritten
+        # by a last background_ok=False from the loop. (set() wakes wait() at
+        # once, so this returns immediately in practice.)
+        if th and th.is_alive() and th is not threading.current_thread():
+            th.join(timeout=1.0)
+        self._hb_thread = None
 
     def _check_prereqs(self):
         av = (cfgmod.load_config().get("auto_vpn") or {})
@@ -1055,6 +1095,11 @@ class ControlView(QWidget):
             self._failed = False
             self._set_dot(_state_color("connected"))
             self.status.setText(t("status.connected"))
+            # Adopt an existing tunnel (e.g. the GUI was reopened from the tray
+            # while connected) — start heartbeating so the watchdog knows a GUI
+            # owns it again.
+            if not self._owns_session():
+                self._start_heartbeat()
         elif self._connecting > 0:
             self._connecting -= 1
             step = gl.connect_step_label(self._read_log())
@@ -1067,7 +1112,12 @@ class ControlView(QWidget):
                 self._failed = True
                 self._set_dot(_state_color("error"))
                 self.status.setText(t("status.timeout_log"))
-                self._diagnose_timeout()
+                # Diagnostics shell out to schtasks + run the exe with `diag`
+                # (up to ~45s). Run them OFF the UI thread so they never freeze
+                # the event loop (the heartbeat is on its own thread either way,
+                # but a frozen UI is still bad).
+                threading.Thread(target=self._diagnose_timeout,
+                                 daemon=True).start()
             else:
                 self._set_dot(_state_color("connecting"))
                 self.status.setText(t(step))
@@ -1076,14 +1126,10 @@ class ControlView(QWidget):
         else:
             self._set_dot(_state_color("disconnected"))
             self.status.setText(t("status.disconnected"))
-        # Heartbeat: keep the watchdog's timestamp fresh while this GUI is
-        # alive and owns a connection — including AFTER the display timeout
-        # (self._failed). Otherwise a slow SAML login (auth can take far
-        # longer than the display timeout) would stop the heartbeat, and the
-        # up-task's watchdog would tear the tunnel down the moment it finally
-        # comes up. Only a real GUI crash stops these writes.
-        if up or self._connecting > 0 or self._failed:
-            session.write_heartbeat(time.time(), background_ok=False)
+        # NB: the watchdog heartbeat is written on the dedicated daemon thread
+        # (_heartbeat_loop), NOT here — refresh() can be stalled by modal
+        # dialogs or a slow is_vpn_up(), and starving the heartbeat used to
+        # cause the backend to tear down a live tunnel.
         self.connect_btn.setEnabled(not up and self._connecting == 0)
         self.disconnect_btn.setEnabled(up or self._connecting > 0)
         if up:
@@ -1112,9 +1158,9 @@ class ControlView(QWidget):
                                   on_setup=self._on_settings)
             return
         try:
-            # Fresh heartbeat BEFORE the task starts so the watchdog sees an
-            # owning GUI from the first moment.
-            session.write_heartbeat(time.time(), background_ok=False)
+            # Start the watchdog heartbeat (daemon thread) BEFORE the task
+            # starts so the backend sees an owning GUI from the first moment.
+            self._start_heartbeat()
             tw.end(tw.TASK_UP)   # clear any stale blocking instance first
             # Preamble (truncating) BEFORE firing the task so the connect log
             # is NEVER empty: if the task fires but the backend never executes
@@ -1140,16 +1186,21 @@ class ControlView(QWidget):
             # last-run result and, if it already shows a hard failure (not the
             # 'still running' 0x41301 code), record it so an empty/short log is
             # explained instead of just timing out.
-            try:
-                code = tw.last_run_result(tw.TASK_UP)
-                if code not in (None, 0, tw.TASK_STILL_RUNNING):
-                    append_connect_log(
-                        cfg_path,
-                        f"[gui] {tw.describe_last_result(code)} — the task "
-                        "fired but the backend did not run. Check the task "
-                        "action/arguments and that the app exe is reachable.")
-            except Exception:
-                pass  # diagnostics must never break a connect
+            # Query the task's last-run result OFF the UI thread — schtasks /v
+            # can take seconds, and blocking here would freeze the UI right
+            # after the click. Best-effort diagnostic only.
+            def _check_run_result(path=cfg_path):
+                try:
+                    code = tw.last_run_result(tw.TASK_UP)
+                    if code not in (None, 0, tw.TASK_STILL_RUNNING):
+                        append_connect_log(
+                            path,
+                            f"[gui] {tw.describe_last_result(code)} — the task "
+                            "fired but the backend did not run. Check the task "
+                            "action/arguments and that the app exe is reachable.")
+                except Exception:
+                    pass
+            threading.Thread(target=_check_run_result, daemon=True).start()
             self._connecting = _CONNECT_TIMEOUT_TICKS
             self._failed = False
             self._set_dot(_state_color("connecting"))
@@ -1162,6 +1213,7 @@ class ControlView(QWidget):
             self.refresh()
 
     def _disconnect(self):
+        self._stop_heartbeat()   # we no longer own a session
         try:
             tw.run(tw.TASK_DOWN)
             tw.end(tw.TASK_UP)   # stop the lingering up-loop so reconnect works
@@ -1503,13 +1555,12 @@ class MainWindow(QWidget):
         self.tray.show()
 
     def _tray_activated(self, reason):
-        if reason == QSystemTrayIcon.ActivationReason.Trigger:
-            # single left-click toggles the connection
-            if is_vpn_up():
-                self.control._disconnect()
-            else:
-                self.control._connect()
-        elif reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+        # A click on the tray icon only SHOWS the window — it must NEVER toggle
+        # the connection: an accidental single left-click used to immediately
+        # tear down a live tunnel. Connect/Disconnect stay explicit (the tray
+        # context-menu actions and the in-window buttons).
+        if reason in (QSystemTrayIcon.ActivationReason.Trigger,
+                      QSystemTrayIcon.ActivationReason.DoubleClick):
             self._show_window()
 
     def _update_tray(self, state):
@@ -1744,7 +1795,10 @@ class MainWindow(QWidget):
         """Handle the tunnel on real app exit: ask (disconnect / keep in
         background) honouring the saved preference. Returns False if the
         user cancelled (exit should be aborted)."""
-        if not is_vpn_up():
+        # Use owns_session() too: a transiently-flaky is_vpn_up() must not make
+        # us silently skip the prompt and clear a session that's actually up.
+        if not (is_vpn_up() or self.control._owns_session()):
+            self.control._stop_heartbeat()
             session.clear()
             return True
         data = cfgmod.load_config()
@@ -1755,7 +1809,10 @@ class MainWindow(QWidget):
             if action == "cancel":
                 return False
         self.control._timer.stop()
+        self.control._stop_heartbeat()   # stop the GUI-owned heartbeat either way
         if action == "background":
+            # Final write AFTER stopping the loop so background_ok=True can't be
+            # overwritten by a trailing background_ok=False.
             session.write_heartbeat(time.time(), background_ok=True)
         else:  # disconnect
             try:
@@ -1860,6 +1917,43 @@ def _state_tray_icon(color_hex: str) -> QIcon:
     return QIcon(pm)
 
 
+_SINGLE_INSTANCE_NAME = "automatic-openconnect-gui-singleton"
+
+
+def _single_instance_server(app):
+    """Enforce a single GUI instance. Returns a listening ``QLocalServer`` if
+    this process is the primary instance, ``None`` if another GUI is already
+    running (we ask it to surface itself and the caller should exit), or
+    ``False`` if the guard is unavailable (run normally without it).
+
+    GUI-only: the elevated Scheduled Task launches the SAME exe as
+    ``automatic-vpn.exe up`` and goes through the CLI branch in :func:`run`, so
+    it never reaches here — the backend is never treated as a second instance.
+    """
+    try:
+        from PyQt6.QtNetwork import QLocalServer, QLocalSocket
+    except Exception:
+        return False  # QtNetwork unavailable → run without the guard
+    try:
+        probe = QLocalSocket()
+        probe.connectToServer(_SINGLE_INSTANCE_NAME)
+        if probe.waitForConnected(300):
+            # A primary instance is already running — wake its window and exit.
+            probe.write(b"show")
+            probe.flush()
+            probe.waitForBytesWritten(300)
+            probe.disconnectFromServer()
+            return None
+        # No primary yet → become it. removeServer() clears a stale pipe/socket
+        # left by a previous crash so listen() doesn't fail on it.
+        QLocalServer.removeServer(_SINGLE_INSTANCE_NAME)
+        server = QLocalServer(app)
+        server.listen(_SINGLE_INSTANCE_NAME)
+        return server
+    except Exception:
+        return False  # never let the single-instance guard break startup
+
+
 def run() -> int:
     """Dual-mode entry for the frozen .exe (and `python -m`): if the first
     argument is a backend subcommand (up/down/status) run the CLI backend;
@@ -1879,6 +1973,11 @@ def main() -> int:
     i18n.set_lang(ui.get("lang", "en"))
     _CURRENT_ACCENT = ui.get("accent", DEFAULT_ACCENT)
     app = QApplication(sys.argv)
+    # Single instance: if a GUI is already running, ask it to surface and exit.
+    # Prevents the "VPN opens twice" / two GUIs both firing tasks + heartbeats.
+    server = _single_instance_server(app)
+    if server is None:
+        return 0
     app.setStyleSheet(_build_stylesheet(ui.get("accent", DEFAULT_ACCENT),
                                         ui.get("theme", DEFAULT_THEME)))
     # Keep the app alive when the window is closed — the tray icon controls
@@ -1890,6 +1989,17 @@ def main() -> int:
     win.setWindowIcon(icon)
     win.setMinimumSize(560, 520)
     win.resize(640, 560)
+
+    def _surface_existing():
+        # A second launch connected to our socket — bring our window to front.
+        conn = server.nextPendingConnection()
+        if conn is not None:
+            conn.disconnectFromServer()
+        win.showNormal()
+        win.raise_()
+        win.activateWindow()
+    if server:  # real QLocalServer (not the False "guard unavailable" sentinel)
+        server.newConnection.connect(_surface_existing)
     # Start hidden in the tray if the user asked for it (and a tray exists);
     # otherwise show the window normally.
     if ui.get("start_minimized", False) and win.tray is not None:
