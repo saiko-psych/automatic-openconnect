@@ -1602,11 +1602,17 @@ class MainWindow(QWidget):
         self.activateWindow()
 
     def _quit(self):
-        if self._perform_exit_teardown():
-            self._hotkey.stop()
-            if self.tray is not None:
-                self.tray.hide()
-            QApplication.instance().quit()
+        # Tray "Beenden" always exits the app; the action only decides the
+        # tunnel's fate (disconnect vs keep running in the background).
+        live = is_vpn_up() or self.control._owns_session()
+        action = self._resolve_exit_action() if live else "disconnect"
+        if action == "cancel":
+            return
+        self._teardown_for_exit(action, live)
+        self._hotkey.stop()
+        if self.tray is not None:
+            self.tray.hide()
+        QApplication.instance().quit()
 
     # --- language -------------------------------------------------------
 
@@ -1778,50 +1784,57 @@ class MainWindow(QWidget):
     # --- close behaviour ------------------------------------------------
 
     def closeEvent(self, event):
-        """The window's X minimises to the tray (the app keeps running and
-        is controlled from the tray icon). Real exit is via the tray's
-        'Beenden'. If there is no system tray, fall back to exit teardown."""
-        if self.tray is not None:
+        """Closing the window honours the exit setting (this is what "disconnect
+        when the window is closed" means). With a live tunnel: ask / disconnect
+        / keep-in-background per the setting. "background" (or nothing to
+        disconnect) minimises to the tray; "disconnect" tears the tunnel down
+        and exits the app."""
+        live = is_vpn_up() or self.control._owns_session()
+        action = self._resolve_exit_action() if live else None
+        if action == "cancel":
+            event.ignore()
+            return
+        if self.tray is not None and action in (None, "background"):
+            # Keep running in the tray (tunnel stays up if there was one).
+            if action == "background":
+                self._teardown_for_exit("background", live)
             event.ignore()
             self.hide()
             self._notify("automatic VPN", t("tray.minimized"))
             return
-        if self._perform_exit_teardown():
-            event.accept()
-        else:
-            event.ignore()
+        # "disconnect", or there is no tray to minimise to → tear down + exit.
+        self._teardown_for_exit("disconnect", live)
+        self._hotkey.stop()
+        if self.tray is not None:
+            self.tray.hide()
+        event.accept()
+        QApplication.instance().quit()
 
-    def _perform_exit_teardown(self) -> bool:
-        """Handle the tunnel on real app exit: ask (disconnect / keep in
-        background) honouring the saved preference. Returns False if the
-        user cancelled (exit should be aborted)."""
-        # Use owns_session() too: a transiently-flaky is_vpn_up() must not make
-        # us silently skip the prompt and clear a session that's actually up.
-        if not (is_vpn_up() or self.control._owns_session()):
-            self.control._stop_heartbeat()
-            session.clear()
-            return True
-        data = cfgmod.load_config()
-        ui = data.get("ui") or {}
-        action = ui.get("close_action", "disconnect")
+    def _resolve_exit_action(self) -> str:
+        """Return 'disconnect' | 'background' | 'cancel' for a close/quit,
+        asking the user when configured to, else using the saved choice."""
+        ui = (cfgmod.load_config().get("ui") or {})
         if ui.get("ask_on_close", True):
-            action = self._ask_close_action(data)
-            if action == "cancel":
-                return False
+            return self._ask_close_action(cfgmod.load_config())
+        return ui.get("close_action", "disconnect")
+
+    def _teardown_for_exit(self, action: str, live: bool) -> None:
+        """Apply the chosen tunnel disposition. 'background' keeps the tunnel
+        up (watchdog disabled); anything else disconnects it."""
         self.control._timer.stop()
-        self.control._stop_heartbeat()   # stop the GUI-owned heartbeat either way
+        self.control._stop_heartbeat()
         if action == "background":
             # Final write AFTER stopping the loop so background_ok=True can't be
             # overwritten by a trailing background_ok=False.
             session.write_heartbeat(time.time(), background_ok=True)
-        else:  # disconnect
+            return
+        if live:
             try:
                 tw.run(tw.TASK_DOWN)
                 tw.end(tw.TASK_UP)
             except Exception:
                 pass
-            session.clear()
-        return True
+        session.clear()
 
     def _ask_close_action(self, data: dict) -> str:
         """Show the close prompt. Returns 'disconnect' | 'background' |

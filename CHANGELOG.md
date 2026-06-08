@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.20] - 2026-06-08
+
+### Fixed
+- **"Disconnect when the window is closed" now actually works.** Closing the
+  window (the X) honours the exit setting: "disconnect" tears the tunnel down
+  and exits; "keep in background" (or nothing connected) minimises to the tray;
+  "ask" prompts. Before, closing the X always silently minimised and ignored
+  the setting.
+
 ## [0.1.19] - 2026-06-08
 
 ### Added
