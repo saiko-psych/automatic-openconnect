@@ -87,6 +87,9 @@ _SANS = "'Segoe UI', sans-serif"
 _MONO = "'Cascadia Mono', 'Consolas', 'DejaVu Sans Mono', monospace"
 _COMIC = "'Comic Sans MS', 'Comic Sans', 'Chalkboard SE', cursive"
 _PIXEL = "'Press Start 2P', 'Courier New', monospace"
+# Anton — a free OFL Impact-like heavy sans (bundled in assets/fonts), used by
+# the meme theme's headings. Falls back to Impact / a bold sans if unavailable.
+_IMPACT = "'Anton', 'Impact', 'Arial Black', sans-serif"
 
 
 def _load_bundled_fonts() -> None:
@@ -176,13 +179,14 @@ _PALETTES = {
         "POPUPSEL": "#ffd9e9", "LOGBG": "#fff5fa",
         "FONT": _COMIC, "PRIMARY_FG": "#ffffff",
     },
-    # Vaporwave — dark synth: magenta + cyan on deep purple, gradient button.
-    "vaporwave": {
-        "BG": "#241b2f", "FG": "#f0c9ff", "SUB": "#a78bc0", "HEADER": "#ff71ce",
-        "PANEL": "#2e2340", "BORDER": "#4a3a63", "HOVER": "#382b4d",
-        "DISFG": "#6e5d85", "DISBG": "#281e36", "INDBORDER": "#54426e",
-        "POPUPSEL": "#3a2c50", "LOGBG": "#1b1426",
-        "FONT": _SANS, "PRIMARY_FG": "#1a1226",
+    # Meme — deep-fried oversaturated warmth: hot orange on near-black, Anton
+    # headings + bold white-with-black-outline meme text. Loud and fun.
+    "meme": {
+        "BG": "#1a0f06", "FG": "#ffe9c2", "SUB": "#d8954a", "HEADER": "#ffffff",
+        "PANEL": "#2a1608", "BORDER": "#7a3a0c", "HOVER": "#3a1d0a",
+        "DISFG": "#8a5a30", "DISBG": "#21130a", "INDBORDER": "#a8500f",
+        "POPUPSEL": "#7a3a0c", "LOGBG": "#120a04",
+        "FONT": _SANS, "PRIMARY_FG": "#1a0f06",
     },
     # Pixel — Game Boy DMG greens, pixel font, square + chunky.
     "pixel": {
@@ -198,12 +202,22 @@ DEFAULT_THEME = "dark"
 # Themes painted square (no rounded corners).
 _SQUARE_THEMES = {"terminal", "pixel"}
 
-# Themes with an animated painted backdrop (scene name → _Backdrop._scene_*).
+# Themes with an animated PAINTED backdrop (scene name → _Backdrop._scene_*).
+# A theme listed in _THEME_GIF prefers its GIF; the painted scene here is the
+# graceful fallback when the GIF asset is missing.
 _THEME_BACKDROP = {
-    "vaporwave": "grid",
     "kawaii": "hearts",
     "y2k": "bubbles",
     "pixel": "pixels",
+    "meme": "deepfried",
+}
+
+# Themes whose backdrop is an animated GIF (theme → asset basename under
+# assets/backgrounds/<name>.gif), played via QMovie and paused when hidden.
+# Falls back to the painted scene in _THEME_BACKDROP if the file is missing.
+_THEME_GIF = {
+    "kawaii": "kawaii",
+    "meme": "meme",
 }
 
 # Themes that force their own cohesive accent (the accent picker only applies
@@ -216,20 +230,24 @@ _THEME_ACCENTS = {
     "sand":      ("#c1654a", "#a8543c"),   # terracotta
     "y2k":       ("#00a8ff", "#0097e6"),   # aqua
     "kawaii":    ("#ff6fa5", "#ff4f90"),   # candy pink
-    "vaporwave": ("#01cdfe", "#00b4e6"),   # cyan
-    "pixel":     ("#8bac0f", "#76930c"),   # Game Boy green
+    "pixel":     ("#d818c8", "#bc12ad"),   # vibrant arcade magenta (not green)
+    "meme":      ("#39e639", "#2bcc2b"),   # stonks green
 }
 
 # Per-theme EXTRA stylesheet appended after the base — for the bold/artsy
 # flourishes (glossy gradient buttons, extra-round corners) that don't fit the
 # plain token swap. Self-contained selectors only, so the base stays intact.
 _THEME_EXTRA_QSS = {
+    # Y2K — turn-of-the-millennium chrome: glossy aqua buttons, Comic Sans
+    # body, hazard-stripe footer hint. The WordArt header is painted by
+    # _WordArtLabel (the real header text is hidden via _Backdrop overlay).
     "y2k": """
 QPushButton#primary { background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
     stop:0 #7fd4ff, stop:0.5 #00a8ff, stop:1 #0077c2);
-    border: 1px solid #0077c2; border-radius: 11px; }
+    border: 1px solid #0077c2; border-radius: 11px; font-weight: 700; }
 QPushButton { border-radius: 11px; background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
     stop:0 #ffffff, stop:1 #e3f3ff); }
+QLabel#subheader { color: #c0157a; font-weight: 700; }
 """,
     "kawaii": """
 QPushButton, QLineEdit, QComboBox { border-radius: 16px; }
@@ -237,10 +255,18 @@ QPushButton#primary { background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
     stop:0 #ffa6c9, stop:1 #ff6fa5); border: none; border-radius: 18px; }
 QCheckBox::indicator { border-radius: 8px; }
 """,
-    "vaporwave": """
-QPushButton#primary { background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
-    stop:0 #ff71ce, stop:1 #01cdfe); border: none; color: #1a1226;
-    font-weight: 700; }
+    # Meme — deep-fried + bold. Anton heading, chunky stonks-green primary
+    # button. The header gets the white-text/black-outline meme treatment via
+    # _MemeLabel; everything else stays loud but readable.
+    "meme": """
+QLabel#header { font-family: @IMPACT@; font-size: 30px;
+    letter-spacing: 1px; color: #ffffff; }
+QLabel#sectionTitle { font-family: @IMPACT@; font-size: 17px; color: #ffd24a; }
+QLabel#subheader { color: #ffb84a; font-weight: 700; }
+QPushButton#primary { background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+    stop:0 #5cff5c, stop:1 #1faa1f); border: 2px solid #0a3d0a;
+    color: #08240a; font-weight: 800; }
+QPushButton { border: 2px solid #b85a14; font-weight: 700; }
 """,
     # Press Start 2P is large + blocky → scale every size down for the pixel UI.
     "pixel": """
@@ -318,6 +344,18 @@ def _asset_url(name: str) -> str:
         return ""
 
 
+def _gif_path(name: str) -> str:
+    """Absolute path to a bundled backdrop GIF, or '' if it isn't present
+    (so a theme can fall back to its painted scene). Uses the same
+    importlib.resources mechanism as the bundled fonts/icons."""
+    try:
+        p = _ir.files("automatic_openconnect") / "assets" / "backgrounds" \
+            / f"{name}.gif"
+        return str(p) if os.path.exists(str(p)) else ""
+    except Exception:
+        return ""
+
+
 def _build_stylesheet(accent: str = DEFAULT_ACCENT,
                       theme: str = DEFAULT_THEME) -> str:
     pal = _PALETTES.get(theme, _PALETTES[DEFAULT_THEME])
@@ -336,6 +374,7 @@ def _build_stylesheet(accent: str = DEFAULT_ACCENT,
         s = re.sub(r"border-radius:\s*\d+px", "border-radius: 0px", s)
     # Bold/artsy flourishes (glossy buttons, extra-round corners) appended last.
     s += _THEME_EXTRA_QSS.get(theme, "")
+    s = s.replace("@IMPACT@", _IMPACT)   # meme heading font family
     if theme in _THEME_BACKDROP:
         # Let the animated backdrop show through: containers + labels go
         # transparent (the backdrop paints its own dimming scrim so text stays
@@ -391,6 +430,110 @@ def _accent_icon(name: str) -> QIcon:
         return QIcon(out)
     except Exception:
         return QIcon()
+
+
+class _FancyHeader(QLabel):
+    """The app title, with an over-the-top per-theme treatment painted via
+    QPainter for the loudest artsy themes:
+
+      * ``y2k``  — classic WordArt: a rainbow GRADIENT fill, a chunky dark
+        bevel/outline and a drop shadow, slightly arched.
+      * ``meme`` — top/bottom-text meme style: bold WHITE fill with a thick
+        BLACK outline + drop shadow (Anton if bundled).
+
+    Any other theme falls through to a normal QLabel (the stylesheet styles
+    ``QLabel#header``), so this is purely additive for the bold themes."""
+
+    def __init__(self, text: str):
+        super().__init__(text)
+        self.setObjectName("header")
+        self._fancy = _CURRENT_THEME in ("y2k", "meme")
+        if self._fancy:
+            # reserve vertical room for the shadow/outline + arch
+            self.setMinimumHeight(58)
+
+    def _font(self):
+        from PyQt6.QtGui import QFont
+        if _CURRENT_THEME == "meme":
+            f = QFont("Anton", 30)
+            f.setStyleHint(QFont.StyleHint.SansSerif)
+        else:  # y2k WordArt
+            f = QFont("Arial Black", 30)
+            f.setBold(True)
+        return f
+
+    def paintEvent(self, e):
+        if not self._fancy:
+            super().paintEvent(e)
+            return
+        from PyQt6.QtGui import (QPainter, QColor, QPen, QPainterPath,
+                                 QLinearGradient, QBrush, QFontMetrics)
+        text = self.text()
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        font = self._font()
+        p.setFont(font)
+        fm = QFontMetrics(font)
+        baseline = (self.height() + fm.ascent() - fm.descent()) // 2
+        x = 2
+        if _CURRENT_THEME == "y2k":
+            self._paint_wordart(p, text, x, baseline, fm)
+        else:
+            self._paint_meme(p, text, x, baseline, fm)
+        p.end()
+
+    def _paint_wordart(self, p, text, x, baseline, fm):
+        """Rainbow-gradient fill + dark bevel + drop shadow, gently arched —
+        the unmistakable early-2000s WordArt look."""
+        from PyQt6.QtGui import (QColor, QPen, QPainterPath, QLinearGradient,
+                                 QBrush)
+        import math
+        # build one path per character so we can arch the baseline
+        full = QPainterPath()
+        cx = x
+        n = max(1, len(text))
+        for i, ch in enumerate(text):
+            arch = -int(8 * math.sin(math.pi * i / (n - 1 or 1)))
+            sub = QPainterPath()
+            sub.addText(float(cx), float(baseline + arch), p.font(), ch)
+            full.addPath(sub)
+            cx += fm.horizontalAdvance(ch)
+        # drop shadow
+        sh = QPainterPath(full)
+        sh.translate(3, 4)
+        p.fillPath(sh, QColor(0, 0, 0, 110))
+        # dark bevel outline
+        pen = QPen(QColor("#0a2a5e")); pen.setWidth(5)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        p.setPen(pen); p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawPath(full)
+        # rainbow gradient fill (the WordArt classic)
+        grad = QLinearGradient(0, 0, cx, 0)
+        for stop, col in ((0.0, "#ff2d2d"), (0.2, "#ff9e1f"), (0.4, "#ffe600"),
+                          (0.6, "#2bd84a"), (0.8, "#2d8bff"), (1.0, "#b14dff")):
+            grad.setColorAt(stop, QColor(col))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.fillPath(full, QBrush(grad))
+        # a glossy top highlight band
+        hi = QLinearGradient(0, baseline - fm.ascent(), 0, baseline)
+        hi.setColorAt(0.0, QColor(255, 255, 255, 160))
+        hi.setColorAt(0.45, QColor(255, 255, 255, 0))
+        p.fillPath(full, QBrush(hi))
+
+    def _paint_meme(self, p, text, x, baseline, fm):
+        """Bold WHITE fill with a thick BLACK outline + drop shadow."""
+        from PyQt6.QtGui import QColor, QPen, QPainterPath
+        path = QPainterPath()
+        path.addText(float(x), float(baseline), p.font(), text)
+        sh = QPainterPath(path)
+        sh.translate(2, 3)
+        p.fillPath(sh, QColor(0, 0, 0, 120))
+        pen = QPen(QColor("#000000")); pen.setWidth(6)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        p.setPen(pen); p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawPath(path)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.fillPath(path, QColor("#ffffff"))
 
 
 def _add_reveal_eye(line_edit: QLineEdit) -> None:
@@ -953,8 +1096,7 @@ class ControlView(QWidget):
         root.setContentsMargins(28, 24, 28, 24)
         root.setSpacing(12)
 
-        header = QLabel("automatic VPN")
-        header.setObjectName("header")
+        header = _FancyHeader("automatic VPN")
         sub = QLabel(t("app.subtitle"))
         sub.setObjectName("subheader")
         root.addWidget(header)
@@ -1197,8 +1339,8 @@ class SettingsView(QWidget):
         root.addWidget(self._section(t("settings.sec_appearance")))
         self.theme = QComboBox()
         self._theme_keys = ["dark", "light", "nord", "plum", "solarized",
-                            "sand", "terminal", "y2k", "kawaii", "vaporwave",
-                            "pixel"]
+                            "sand", "terminal", "y2k", "kawaii", "pixel",
+                            "meme"]
         for _tk in self._theme_keys:
             self.theme.addItem(t(f"settings.theme_{_tk}"))
         cur_theme = ui.get("theme", DEFAULT_THEME)
@@ -1384,10 +1526,15 @@ class SettingsView(QWidget):
 
 
 class _Backdrop(QWidget):
-    """Animated, painted background for the artsy themes — drawn (no GIF), so
-    it's smooth and recolours with the theme. Mouse-transparent; fills the
-    parent and paints a per-theme scene + a dimming scrim so foreground text
-    stays readable."""
+    """Animated background for the artsy themes. Two modes:
+
+      * a PAINTED scene (drawn via QPainter, recolours with the theme), or
+      * an animated GIF (played via QMovie) when the theme declares one.
+
+    Mouse-transparent; fills the parent and lays a dimming scrim over the GIF
+    (the painted scenes draw their own) so foreground text stays readable.
+    Animation is paused whenever the window is hidden/minimised — for the GIF
+    that means QMovie is actually stopped — so an idle app costs 0% CPU."""
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -1395,6 +1542,8 @@ class _Backdrop(QWidget):
         self._scene = None
         self._pal = {}
         self._t = 0.0
+        self._movie = None        # QMovie when this theme uses a GIF backdrop
+        self._scrim_hex = "#000000"
         import random
         rnd = random.Random(20260607)
         # (x0..1, phase0..1, size0..1, speed0..1) — stable layout per element.
@@ -1403,10 +1552,20 @@ class _Backdrop(QWidget):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
 
-    def set_scene(self, scene, palette):
+    def set_scene(self, scene, palette, gif=None, scrim_hex="#000000"):
+        """Activate a backdrop. ``gif`` is an absolute path to a looping GIF
+        (preferred when present); otherwise the painted ``scene`` is used.
+        Either may be falsy to disable the backdrop entirely."""
+        self._stop_movie()
         self._scene = scene
         self._pal = palette or {}
-        if scene:
+        self._scrim_hex = scrim_hex
+        if gif:
+            self._start_movie(gif)
+            self.show()
+            self.lower()
+            self._timer.stop()    # QMovie drives its own repaints
+        elif scene:
             self.show()
             self.lower()
             if not self._timer.isActive():
@@ -1416,24 +1575,57 @@ class _Backdrop(QWidget):
             self.hide()
         self.update()
 
+    def _start_movie(self, path):
+        from PyQt6.QtGui import QMovie
+        mv = QMovie(path)
+        if not mv.isValid():
+            self._movie = None     # graceful fallback to the painted scene
+            return
+        mv.frameChanged.connect(self.update)   # repaint each GIF frame
+        mv.start()
+        self._movie = mv
+
+    def _stop_movie(self):
+        if self._movie is not None:
+            self._movie.stop()
+            self._movie = None
+
     def _tick(self):
         self._t += 1.0
         self.update()
 
     def pause(self):
         """Stop animating (window minimised / hidden to tray) → 0% CPU while
-        idle, which is the app's normal state."""
+        idle, which is the app's normal state. Stops the GIF too."""
         self._timer.stop()
+        if self._movie is not None:
+            self._movie.setPaused(True)
 
     def resume(self):
-        """Resume animating, but only if a scene is active."""
-        if self._scene and not self._timer.isActive():
+        """Resume animating, but only if a backdrop is active."""
+        if self._movie is not None:
+            self._movie.setPaused(False)
+        elif self._scene and not self._timer.isActive():
             self._timer.start(66)
 
     def paintEvent(self, _e):
+        from PyQt6.QtGui import QPainter
+        # GIF backdrop: draw the current frame scaled to fill, then a scrim.
+        if self._movie is not None:
+            pm = self._movie.currentPixmap()
+            if not pm.isNull():
+                p = QPainter(self)
+                scaled = pm.scaled(
+                    self.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                    Qt.TransformationMode.SmoothTransformation)
+                x = (self.width() - scaled.width()) // 2
+                y = (self.height() - scaled.height()) // 2
+                p.drawPixmap(x, y, scaled)
+                self._scrim(p, self._scrim_hex, 90)
+                p.end()
+            return
         if not self._scene:
             return
-        from PyQt6.QtGui import QPainter
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         try:
@@ -1456,96 +1648,6 @@ class _Backdrop(QWidget):
         p.fillRect(self.rect(), c)
 
     # --- scenes ----------------------------------------------------------
-
-    def _scene_grid(self, p):       # vaporwave: neon sun, mountains + grid
-        from PyQt6.QtGui import (QColor, QRadialGradient, QLinearGradient,
-                                 QPen, QPainterPath, QBrush)
-        import math
-        w, h = self.width(), self.height()
-        horizon = int(h * 0.58)
-        # --- sky: deep indigo → magenta dusk -----------------------------
-        sky = QLinearGradient(0, 0, 0, horizon)
-        sky.setColorAt(0.0, QColor("#1a0b2e"))
-        sky.setColorAt(0.55, QColor("#3b1259"))
-        sky.setColorAt(1.0, QColor("#a01f7a"))
-        p.fillRect(0, 0, w, horizon, QBrush(sky))
-        p.fillRect(0, horizon, w, h - horizon, QColor("#0c0718"))
-        p.setPen(Qt.PenStyle.NoPen)
-        # --- twinkling stars (upper sky) ---------------------------------
-        for (bx, ph, sz, sp) in self._blobs:
-            sy = ph * horizon * 0.7
-            if sy > horizon - 8:
-                continue
-            tw_ = 0.45 + 0.55 * (0.5 + 0.5 * math.sin(self._t * 0.12
-                                                      + ph * 6.283 + bx * 9))
-            c = QColor("#ffffff"); c.setAlpha(int(40 + 150 * tw_ * sz))
-            p.setBrush(c)
-            r0 = 1 + sz * 1.6
-            p.drawEllipse(int(bx * w), int(sy), int(r0), int(r0))
-        # --- the neon sun: outer glow + banded disc ----------------------
-        r = max(70, int(min(w, h) * 0.20))
-        cx, cy = w // 2, horizon
-        glow = QRadialGradient(cx, cy, r * 1.9)
-        glow.setColorAt(0.0, QColor(255, 110, 199, 130))
-        glow.setColorAt(0.5, QColor(255, 110, 199, 45))
-        glow.setColorAt(1.0, QColor(255, 110, 199, 0))
-        p.setBrush(glow)
-        p.drawEllipse(int(cx - r * 1.9), int(cy - r * 1.9),
-                      int(r * 3.8), int(r * 3.8))
-        sun = QLinearGradient(0, cy - r, 0, cy + r)
-        sun.setColorAt(0.0, QColor("#fff07a"))
-        sun.setColorAt(0.5, QColor("#ff8e5e"))
-        sun.setColorAt(1.0, QColor("#ff3d9a"))
-        # clip the disc so the gap-bands don't leak outside it
-        path = QPainterPath()
-        path.addEllipse(float(cx - r), float(cy - r), float(2 * r), float(2 * r))
-        p.save()
-        p.setClipPath(path)
-        p.setBrush(sun)
-        p.drawRect(cx - r, cy - r, 2 * r, 2 * r)
-        # retro horizontal gaps across the lower 60% of the sun
-        p.setBrush(QColor("#0c0718"))
-        for i in range(7):
-            band = int(r * 0.34) + i * int(r * 0.12)
-            yy = cy - r * 0.15 + band
-            gh = max(2, int(r * 0.05) + i)   # gaps widen toward the bottom
-            if yy < cy + r:
-                p.drawRect(int(cx - r), int(yy), int(2 * r), gh)
-        p.restore()
-        # --- mountain silhouette on the horizon --------------------------
-        ridge = QPainterPath()
-        ridge.moveTo(0, horizon)
-        rnd_peaks = [(0.0, 0.0), (0.12, 0.10), (0.24, 0.03), (0.38, 0.16),
-                     (0.5, 0.05), (0.62, 0.18), (0.76, 0.04), (0.88, 0.12),
-                     (1.0, 0.0)]
-        for fx, fy in rnd_peaks:
-            ridge.lineTo(fx * w, horizon - fy * h * 0.9)
-        ridge.lineTo(w, horizon)
-        ridge.closeSubpath()
-        p.setBrush(QColor("#160a28"))
-        p.drawPath(ridge)
-        # thin neon ridge outline
-        pen = QPen(QColor(1, 205, 254, 160)); pen.setWidth(1)
-        p.setPen(pen); p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawPath(ridge)
-        # --- perspective grid (cyan→magenta, accelerating toward us) -----
-        gpen = QPen(QColor(1, 205, 254, 170)); gpen.setWidth(2)
-        p.setPen(gpen)
-        for i in range(-12, 13):           # vertical lines fanning out
-            x = cx + i * (w // 11)
-            p.drawLine(cx, horizon, x, h)
-        off = (self._t * 4) % 1.0          # 0..1 scroll within one band
-        depth = h - horizon
-        for i in range(1, 22):             # horizontal lines, ease toward us
-            f = ((i + off) / 22.0) ** 2.4  # quadratic perspective spacing
-            yy = int(horizon + f * depth)
-            # fade lines magenta as they approach the bottom edge
-            mix = f
-            gpen.setColor(QColor(int(1 + 254 * mix), int(205 - 90 * mix),
-                                 int(254 - 60 * mix), 170))
-            p.setPen(gpen)
-            p.drawLine(0, yy, w, yy)
-        self._scrim(p, "#160a28", 64)
 
     def _heart(self, cx, cy, s):
         from PyQt6.QtGui import QPainterPath
@@ -1633,7 +1735,32 @@ class _Backdrop(QWidget):
             p.setBrush(col)
             p.drawPath(path)
 
-    def _scene_bubbles(self, p):    # y2k: retro starfield + lens-flare shine
+    def _hazard_band(self, p, y, band_h, scroll, col_a, col_b, stripe=22):
+        """A diagonal "Under Construction" hazard-stripe band across the full
+        width — the loudest possible turn-of-the-millennium flourish."""
+        from PyQt6.QtGui import QColor, QPainterPath
+        w = self.width()
+        p.save()
+        clip = QPainterPath()
+        clip.addRect(0.0, float(y), float(w), float(band_h))
+        p.setClipPath(clip)
+        off = int(scroll) % (2 * stripe)
+        x = -band_h - 2 * stripe + off
+        i = 0
+        while x < w + band_h:
+            col = QColor(col_a if i % 2 == 0 else col_b)
+            poly = QPainterPath()
+            poly.moveTo(x, y + band_h)
+            poly.lineTo(x + stripe, y + band_h)
+            poly.lineTo(x + stripe + band_h, y)
+            poly.lineTo(x + band_h, y)
+            poly.closeSubpath()
+            p.fillPath(poly, col)
+            x += stripe
+            i += 1
+        p.restore()
+
+    def _scene_bubbles(self, p):    # y2k: hazard stripes + starfield + shine
         from PyQt6.QtGui import QColor, QRadialGradient, QBrush
         import math
         w, h = self.width(), self.height()
@@ -1644,16 +1771,21 @@ class _Backdrop(QWidget):
         bg.setColorAt(1.0, QColor("#8fd0ff"))
         p.fillRect(self.rect(), QBrush(bg))
         p.setPen(Qt.PenStyle.NoPen)
-        # drifting starfield — small aqua diamonds streaming to the left
+        # scrolling "Under Construction" hazard stripes top + bottom
+        bh = max(14, int(h * 0.05))
+        self._hazard_band(p, 0, bh, self._t * 1.4, "#ffd400", "#1a1a1a")
+        self._hazard_band(p, h - bh, bh, -self._t * 1.4, "#ffd400", "#1a1a1a")
+        # drifting starfield — clashing neon diamonds streaming right→left
+        neon = ["#00a8ff", "#ff00d4", "#39ff14", "#ffffff", "#ff7a00"]
         for i, (bx, ph, sz, sp) in enumerate(self._blobs):
-            s = 3 + sz * 7
+            s = 3 + sz * 8
             x = ((bx + self._t * (0.0015 + sp * 0.004)) % 1.0) * w
             x = w - x                       # drift right→left
-            y = ph * h
+            y = bh + ph * (h - 2 * bh)      # keep clear of the hazard bands
             twk = 0.5 + 0.5 * math.sin(self._t * 0.15 + ph * 9 + bx * 5)
-            c = QColor("#00a8ff") if i % 2 else QColor("#ffffff")
-            c.setAlpha(int(60 + 140 * twk))
-            self._starburst(p, x, y, s, c, spikes=2)
+            c = QColor(neon[i % len(neon)])
+            c.setAlpha(int(70 + 150 * twk))
+            self._starburst(p, x, y, s, c, spikes=2 + (i % 2) * 2)
         # one big rotating lens-flare in the upper area (the Web-1.0 "shine")
         fx = w * (0.32 + 0.12 * math.sin(self._t * 0.012))
         fy = h * 0.30
@@ -1749,6 +1881,61 @@ class _Backdrop(QWidget):
             p.fillRect(px, py, 8, 8, c)
         self._scrim(p, "#0f380f", 78)
 
+    def _scene_deepfried(self, p):  # meme fallback: pulsing glow + stonks arrow
+        from PyQt6.QtGui import QColor, QRadialGradient, QBrush, QPainterPath
+        import math
+        w, h = self.width(), self.height()
+        # deep-fried warm glow that pulses (orange core breathing in/out)
+        pulse = 0.5 + 0.5 * math.sin(self._t * 0.06)
+        glow = QRadialGradient(w * 0.5, h * 0.55, max(w, h) * (0.6 + 0.12 * pulse))
+        glow.setColorAt(0.0, QColor(int(255), int(120 - 60 * pulse), 30))
+        glow.setColorAt(0.55, QColor("#b5300a"))
+        glow.setColorAt(1.0, QColor("#28083c"))
+        p.fillRect(self.rect(), QBrush(glow))
+        p.setPen(Qt.PenStyle.NoPen)
+        # scattered deep-fried sparkles
+        for i, (bx, ph, sz, sp) in enumerate(self._blobs):
+            twk = 0.5 + 0.5 * math.sin(self._t * 0.2 + ph * 9 + bx * 6)
+            r = 1 + sz * 3
+            c = QColor(255, 240, 120); c.setAlpha(int(50 + 130 * twk))
+            p.setBrush(c)
+            p.drawEllipse(int(bx * w), int(ph * h), int(2 * r), int(2 * r))
+        # the green "stonks" up-arrow, bobbing like it's pumping
+        bob = math.sin(self._t * 0.07) * 10
+        g = QColor("#3ce63c")
+        x0, y0 = w * 0.22, h * 0.78 + bob
+        x1, y1 = w * 0.74, h * 0.30 + bob
+        shaft = QPainterPath()
+        shaft.moveTo(x0, y0); shaft.lineTo(x1, y1)
+        from PyQt6.QtGui import QPen
+        pen = QPen(g); pen.setWidth(max(6, int(min(w, h) * 0.03)))
+        p.setPen(pen)
+        p.drawLine(int(w * 0.12), int(h * 0.70 + bob), int(x0), int(y0))
+        p.drawLine(int(x0), int(y0), int(x1), int(y1))
+        p.setPen(Qt.PenStyle.NoPen)
+        ah = max(20, int(min(w, h) * 0.07))
+        head = QPainterPath()
+        head.moveTo(x1 + ah * 0.4, y1 - ah * 0.4)
+        head.lineTo(x1 - ah, y1 - ah * 0.1)
+        head.lineTo(x1 + ah * 0.1, y1 + ah)
+        head.closeSubpath()
+        p.fillPath(head, g)
+        # a rotating lens-flare glint (the classic meme shine)
+        fx, fy = w * 0.30, h * 0.28
+        R = max(50, int(min(w, h) * 0.18))
+        halo = QRadialGradient(fx, fy, R * 1.3)
+        halo.setColorAt(0.0, QColor(255, 255, 255, 170))
+        halo.setColorAt(1.0, QColor(255, 255, 255, 0))
+        p.setBrush(halo)
+        p.drawEllipse(int(fx - R * 1.3), int(fy - R * 1.3),
+                      int(R * 2.6), int(R * 2.6))
+        p.save()
+        p.translate(fx, fy)
+        p.rotate(math.degrees(self._t * 0.03))
+        self._starburst(p, 0, 0, R, QColor(255, 255, 255, 210), spikes=4)
+        p.restore()
+        self._scrim(p, "#1a0f06", 70)
+
 
 class MainWindow(QWidget):
     def __init__(self, icon=None):
@@ -1806,8 +1993,15 @@ class MainWindow(QWidget):
     def _apply_backdrop(self):
         theme = (cfgmod.load_config().get("ui") or {}).get("theme", DEFAULT_THEME)
         scene = _THEME_BACKDROP.get(theme)
-        self._backdrop.set_scene(scene, _PALETTES.get(theme))
-        if scene:
+        # Prefer an animated GIF if the theme declares one AND the file ships;
+        # otherwise fall back to the painted scene.
+        gif = _gif_path(_THEME_GIF[theme]) if theme in _THEME_GIF else ""
+        # Tint the GIF scrim with the theme's own background so the dimmed
+        # backdrop matches the rest of the UI (kawaii pink, meme dark warm).
+        scrim = (_PALETTES.get(theme) or {}).get("BG", "#000000")
+        self._backdrop.set_scene(scene, _PALETTES.get(theme),
+                                 gif=gif, scrim_hex=scrim)
+        if scene or gif:
             self._backdrop.setGeometry(0, 0, self.width(), self.height())
             self._backdrop.lower()
 
