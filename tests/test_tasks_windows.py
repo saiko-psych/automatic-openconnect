@@ -233,3 +233,10 @@ class TestBatterySettings(unittest.TestCase):
 
     def test_task_version_bumped_for_battery_fix(self):
         self.assertGreaterEqual(tw.TASK_VERSION, 2)
+
+    def test_register_script_sets_no_working_directory(self):
+        # Regression: a -WorkingDirectory changed openconnect's CWD and broke
+        # Wintun adapter setup on the first attempt (false "connection failed").
+        script = tw.build_register_script(
+            r"C:\app\automatic-vpn.exe", r"C:\cfg.json", frozen=True)
+        self.assertNotIn("-WorkingDirectory", script)

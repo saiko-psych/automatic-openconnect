@@ -3,6 +3,19 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.21] - 2026-06-09
+
+### Fixed
+- **Connect no longer shows a false "connection failed" before connecting**
+  (regression since 0.1.14). The elevated task was registered with a
+  `-WorkingDirectory` (a hedge for a since-disproven theory) that changed
+  openconnect.exe's working directory and broke Wintun adapter creation on the
+  FIRST attempt ("Timed out waiting for device query" / "Failed to setup
+  adapter"), so it only succeeded on a retry — showing a spurious failure
+  first. Removed it (back to the clean v0.1.10 behaviour). Verified locally:
+  clean first-attempt connect in ~12-15s, no Wintun error across repeated runs.
+  Existing installs are auto-offered a one-click re-register (task version 3).
+
 ## [0.1.20] - 2026-06-08
 
 ### Fixed

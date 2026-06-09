@@ -25,9 +25,11 @@ TASK_DOWN = "AutoOpenconnect-Down"
 
 # Bumped whenever the registered task definition changes in a way existing
 # installs must pick up (stored as auto_vpn.task_version in config). v2 added
-# -AllowStartIfOnBatteries (laptops on battery silently skipped the action).
-# The GUI offers a one-click re-register when the stored version is older.
-TASK_VERSION = 2
+# -AllowStartIfOnBatteries (laptops on battery silently skipped the action);
+# v3 removed -WorkingDirectory (it changed openconnect's CWD and broke Wintun
+# adapter setup on the first attempt → false "connection failed"). The GUI
+# offers a one-click re-register when the stored version is older.
+TASK_VERSION = 3
 
 # Hide the console window of schtasks/powershell helpers. The GUI runs
 # windowless (pythonw.exe), so a console child without this flag would pop
@@ -71,13 +73,14 @@ def build_register_script(python_exe: str, config_path: str,
         else:
             argline = (f'-m automatic_openconnect._windows {sub} '
                        f'--config "{config_path}"')
-        # Pin the task's working directory to the exe's folder (some setups
-        # otherwise launch it in System32, which can trip a one-file exe).
-        workdir = exe.rsplit("\\", 1)[0] if "\\" in exe else ""
-        wd_arg = f" -WorkingDirectory '{workdir}'" if workdir else ""
+        # NO -WorkingDirectory: it changes openconnect.exe's CWD and broke
+        # Wintun adapter setup on the first attempt ("device query timeout" /
+        # "file not found"), which showed a false "connection failed" before a
+        # retry succeeded. v0.1.10 (which worked cleanly) set no WorkingDirectory
+        # — the exe folder hedge was added for the disproven one-folder theory.
         return (
             f"$a = New-ScheduledTaskAction -Execute '{exe}' "
-            f"-Argument '{argline}'{wd_arg};\n"
+            f"-Argument '{argline}';\n"
             f"$p = New-ScheduledTaskPrincipal -UserId $env:USERNAME "
             f"-LogonType Interactive -RunLevel Highest;\n"
             # CRITICAL: New-ScheduledTaskSettingsSet defaults

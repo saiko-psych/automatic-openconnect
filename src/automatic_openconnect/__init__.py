@@ -28,5 +28,5 @@ from __future__ import annotations
 from .core import VPNError
 from .factory import auto_vpn_session, make_vpn_session
 
-__version__ = "0.1.20"
+__version__ = "0.1.21"
 __all__ = ["auto_vpn_session", "make_vpn_session", "VPNError", "__version__"]
