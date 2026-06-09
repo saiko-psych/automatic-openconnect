@@ -40,7 +40,12 @@ def connect_step_label(log_text: str) -> str:
     """Map the latest known marker in the connect log to a coarse step KEY
     (translated by the GUI). Order matters: check the latest stages first.
     """
-    t = log_text
+    # Consider only the LATEST attempt: the elevated backend owns the connect
+    # log and may leave stale lines from earlier attempts that the non-elevated
+    # GUI can't clear. Slicing from the last "bringing tunnel up" keeps an old
+    # "FAIL:" from flashing a spurious "connection failed" over a live connect.
+    idx = log_text.rfind("bringing tunnel up")
+    t = log_text[idx:] if idx != -1 else log_text
     if "Traceback (most recent call last)" in t or "FAIL:" in t:
         return "step.failed"
     if "route configuration done" in t or "Tunnel is up" in t:

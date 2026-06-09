@@ -3,6 +3,20 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.22] - 2026-06-09
+
+### Fixed
+- **No more spurious "connection failed" flashing before it connects**
+  (regression since 0.1.11). The connect log had been switched to APPEND mode,
+  so it accumulated every attempt; the elevated task owns the file and the
+  non-elevated GUI can't truncate it, so the GUI's step detection kept seeing
+  stale "FAIL:" lines from earlier attempts and showed "connection failed" even
+  while the current attempt was connecting fine. Now the backend truncates the
+  log per attempt (as in 0.1.10), the GUI only considers the latest attempt,
+  and a flaky first Wintun-adapter attempt is retried internally (re-auth) so
+  it resolves to a clean connect. Verified across repeated runs: no "FAIL:"
+  surfaced and the GUI never showed "failed".
+
 ## [0.1.21] - 2026-06-09
 
 ### Fixed

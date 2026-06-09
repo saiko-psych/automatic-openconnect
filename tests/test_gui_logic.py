@@ -116,6 +116,22 @@ class TestConnectStepLabel(unittest.TestCase):
                "Traceback (most recent call last):\n  ...")
         self.assertEqual(gl.connect_step_label(log), "step.failed")
 
+    def test_stale_failure_before_latest_attempt_is_ignored(self):
+        # The accumulated log has an OLD FAIL: from a previous attempt, then a
+        # fresh attempt that is connecting fine — must NOT show "failed".
+        log = ("[auto_vpn_win] CLI mode: bringing tunnel up\n"
+               "[auto_vpn_win] FAIL: openconnect.exe exited prematurely\n"
+               "[auto_vpn_win] CLI mode: bringing tunnel up\n"
+               "[openconnect] CSTP connected. DPD 30, Keepalive 20\n")
+        self.assertEqual(gl.connect_step_label(log), "step.tunnel")
+
+    def test_failure_in_latest_attempt_is_detected(self):
+        log = ("[auto_vpn_win] CLI mode: bringing tunnel up\n"
+               "[openconnect] connected\n"
+               "[auto_vpn_win] CLI mode: bringing tunnel up\n"
+               "[auto_vpn_win] FAIL: openconnect-sso failed (exit 2).\n")
+        self.assertEqual(gl.connect_step_label(log), "step.failed")
+
 
 class TestDetect(unittest.TestCase):
     def test_detect_openconnect_prefers_standard_path(self):

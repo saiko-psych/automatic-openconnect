@@ -484,6 +484,16 @@ def _start_tunnel(host: str, cookie: str, fingerprint: str,
                     "Wintun adapter despite running as Administrator. "
                     "Reboot and retry, or check the Windows Event Log."
                 )
+            if ("Read error on SSL session" in line
+                    or "Failed to setup adapter" in line
+                    or "Could not create Wintun adapter" in line):
+                # Transient: openconnect's Wintun adapter creation flaked /
+                # the SSL session dropped during setup (common when other
+                # Wintun/WireGuard VPNs are installed). Fail FAST so the caller
+                # can re-auth and retry, instead of blocking the full 60s
+                # route-config wait. _TRANSIENT_TUNNEL marks it retryable.
+                _terminate_proc(proc)
+                raise VPNError(_TRANSIENT_TUNNEL)
         else:
             time.sleep(0.2)
 
@@ -610,6 +620,17 @@ def _stop_tunnel_by_proc(proc: Optional[subprocess.Popen]) -> None:
 # keeps running, so the user can still reconnect manually afterwards.
 _MAX_RECONNECT_ATTEMPTS = 15
 
+# Marker message for a transient tunnel-setup failure (flaky Wintun adapter
+# creation / SSL drop during setup) — _start_tunnel raises it so the caller
+# fails fast and retries instead of blocking the full route-config wait.
+_TRANSIENT_TUNNEL = ("transient Wintun/SSL adapter-setup failure — retrying")
+
+# How many times to (re-auth +) retry the tunnel bring-up on a transient
+# failure before surfacing it. openconnect's first Wintun attempt is often
+# flaky when other Wintun/WireGuard VPNs are present; a quiet internal retry
+# turns that into a clean connect instead of a visible "connection failed".
+_TUNNEL_SETUP_ATTEMPTS = 4
+
 
 class _WinVpnSession:
     """Owns the openconnect tunnel for one ``auto_vpn_session_win``. Exposes
@@ -631,7 +652,7 @@ class _WinVpnSession:
         # Mullvad's routing would mask the SAML POST. They stay stopped for the
         # whole session — reconnects do NOT touch them.
         self.stopped_services = _stop_conflicting_services(self._cfg)
-        self._bring_up()
+        self._bring_up_with_retry()
 
     def _bring_up(self) -> None:
         host, cookie, fingerprint = _authenticate(self._cfg)
@@ -640,15 +661,34 @@ class _WinVpnSession:
         finally:
             del cookie  # drop the sensitive cookie from this frame
 
+    def _bring_up_with_retry(self, attempts: int = _TUNNEL_SETUP_ATTEMPTS) -> None:
+        """Bring the tunnel up, retrying a transient failure (flaky Wintun
+        adapter creation / SSL drop) by re-authenticating and trying again.
+        Intermediate failures are logged WITHOUT the "FAIL:" marker so the GUI
+        keeps showing "connecting" instead of flashing "connection failed";
+        only a final give-up surfaces the error."""
+        for n in range(1, attempts + 1):
+            try:
+                self._bring_up()
+                return
+            except VPNError as exc:
+                if n >= attempts:
+                    raise
+                print(f"[auto_vpn_win] tunnel setup attempt {n} didn't take "
+                      f"({exc}) — re-authenticating and retrying", file=sys.stderr)
+                sys.stderr.flush()
+                _kill_stale_processes()
+                time.sleep(2)
+
     def alive(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
 
     def reconnect(self) -> None:
         """Re-establish the tunnel after a drop: clear the dead openconnect (and
-        any stale sso) and re-authenticate UNATTENDED (stored creds + TOTP).
-        Conflicting services stay stopped, so no flapping."""
+        any stale sso) and re-authenticate UNATTENDED (stored creds + TOTP),
+        retrying transient Wintun failures. Conflicting services stay stopped."""
         _kill_stale_processes()
-        self._bring_up()
+        self._bring_up_with_retry()
 
     def teardown(self) -> None:
         _stop_tunnel_by_proc(self.proc)
@@ -754,13 +794,15 @@ def _redirect_output_to_log(config_path: str) -> None:
     """Tee stdout+stderr to the connect log. Best-effort (a windowless
     task has nowhere else for the output to go).
 
-    Opens in APPEND mode so a preamble the GUI wrote right before firing the
-    task survives (it is the only breadcrumb if the task itself never reaches
-    here). If opening the log fails, we record that fact via a fallback file
-    next to it AND keep the original stderr, so the failure is never silent.
+    Opens in TRUNCATE mode ("w") so the log holds ONLY the current connect
+    attempt. The elevated task owns the file, so the non-elevated GUI can't
+    truncate it — if we appended instead, the log would grow without bound and
+    the GUI's step detection would key on stale "FAIL:" lines from earlier
+    attempts and show a spurious "connection failed". On failure we record that
+    via a fallback file and keep the original stderr, so it's never silent.
     """
     try:
-        log = open(connect_log_path(config_path), "a",
+        log = open(connect_log_path(config_path), "w",
                    encoding="utf-8", buffering=1)
         sys.stdout = log
         sys.stderr = log

@@ -510,5 +510,45 @@ class TestAutoReconnect(unittest.TestCase):
             restart.assert_not_called()
 
 
+class TestTunnelSetupRetry(unittest.TestCase):
+    """A flaky first Wintun attempt is retried internally (re-auth + retry) so
+    the user gets a clean connect instead of a visible 'connection failed'."""
+
+    def _session(self):
+        return _WinVpnSession({"user_email": "x@example.org"})
+
+    def test_retries_then_succeeds(self):
+        s = self._session()
+        proc = mock.Mock()
+        calls = {"n": 0}
+
+        def flaky(*a, **k):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise VPNError("transient Wintun/SSL adapter-setup failure")
+            return proc
+
+        with mock.patch("automatic_openconnect._windows._authenticate",
+                        return_value=("h", "c", "f")), \
+             mock.patch("automatic_openconnect._windows._start_tunnel",
+                        side_effect=flaky), \
+             mock.patch("automatic_openconnect._windows._kill_stale_processes"), \
+             mock.patch("automatic_openconnect._windows.time.sleep"):
+            s._bring_up_with_retry(attempts=4)
+        self.assertEqual(calls["n"], 3)        # 2 transient fails + 1 success
+        self.assertIs(s.proc, proc)
+
+    def test_gives_up_after_attempts(self):
+        s = self._session()
+        with mock.patch("automatic_openconnect._windows._authenticate",
+                        return_value=("h", "c", "f")), \
+             mock.patch("automatic_openconnect._windows._start_tunnel",
+                        side_effect=VPNError("always fails")), \
+             mock.patch("automatic_openconnect._windows._kill_stale_processes"), \
+             mock.patch("automatic_openconnect._windows.time.sleep"):
+            with self.assertRaises(VPNError):
+                s._bring_up_with_retry(attempts=3)
+
+
 if __name__ == "__main__":
     unittest.main()
