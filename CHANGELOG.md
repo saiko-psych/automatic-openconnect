@@ -3,6 +3,21 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.24] - 2026-06-09
+
+### Fixed
+- **THE connect bug — "connected but no internet/traffic" (affected every
+  version, incl. 0.1.10).** openconnect.exe was launched without a console
+  (CREATE_NO_WINDOW + a windowless launcher), so its `vpnc-script-win.js` —
+  which configures DNS + the split-include routes via `cscript` — could not run
+  and hung. "Legacy IP route configuration done" never arrived: the tunnel came
+  up but routed nothing ("connected" with no internet). openconnect now gets
+  its OWN hidden console (CREATE_NEW_CONSOLE + STARTUPINFO SW_HIDE), so the
+  script runs and routes are configured. The original termino script always
+  worked precisely because it runs under cmd.exe and inherits its console.
+  Verified live: routes 143.50.0.0/16 + 193.170.79.0/24 set, uni DNS applied,
+  webmail.uni-graz.at reachable through the tunnel.
+
 ## [0.1.23] - 2026-06-09
 
 ### Changed

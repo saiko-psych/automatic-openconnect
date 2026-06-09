@@ -391,6 +391,21 @@ def _authenticate(cfg: dict) -> Tuple[str, str, str]:
     return host, cookie, fingerprint
 
 
+def _hidden_console_startupinfo():
+    """STARTUPINFO that hides the window of a CREATE_NEW_CONSOLE child.
+
+    openconnect needs a real console (for the vpnc-script), but we don't want
+    its window visible when launched from the background task. SW_HIDE on the
+    new console keeps it functional but invisible. Returns None off-Windows.
+    """
+    if sys.platform != "win32":
+        return None
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    si.wShowWindow = 0  # SW_HIDE
+    return si
+
+
 def _start_tunnel(host: str, cookie: str, fingerprint: str,
                   cfg: dict) -> subprocess.Popen:
     """Spawn openconnect.exe in the background and return the Popen handle.
@@ -427,12 +442,21 @@ def _start_tunnel(host: str, cookie: str, fingerprint: str,
         text=True,
         encoding="utf-8",
         errors="replace",
-        # New process group so Ctrl-C in our process doesn't kill the
-        # tunnel prematurely - we control teardown via terminate().
-        # CREATE_NO_WINDOW so openconnect.exe (a console app) does not pop
-        # its own console window when launched from the windowless task.
+        # New process group so Ctrl-C doesn't kill the tunnel prematurely — we
+        # control teardown via terminate().
+        #
+        # CRITICAL: openconnect MUST have a console. It runs vpnc-script-win.js
+        # via cscript to configure DNS + routes; with NO console (the default
+        # when launched from windowless pythonw / a console=False .exe, or
+        # explicitly via CREATE_NO_WINDOW) that script step HANGS and "route
+        # configuration done" never arrives → tunnel shows connected but routes
+        # nothing. The original termino script works because it runs under
+        # cmd.exe and inherits its console. We can't inherit one (windowless
+        # launcher), so we give openconnect its OWN console via CREATE_NEW_
+        # CONSOLE — hidden via STARTUPINFO (SW_HIDE) so no window pops up.
         creationflags=(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-                       | getattr(subprocess, "CREATE_NO_WINDOW", 0)),
+                       | getattr(subprocess, "CREATE_NEW_CONSOLE", 0)),
+        startupinfo=_hidden_console_startupinfo(),
     )
 
     # Wait for vpnc-script-win.js to finish configuring DNS + routes.
