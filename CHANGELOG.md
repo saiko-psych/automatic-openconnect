@@ -3,6 +3,25 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.23] - 2026-06-09
+
+### Changed
+- **Simplified the connect back to the proven v0.1.10 single-attempt
+  behaviour.** Removed the internal connect-retry added in 0.1.22 — it caused a
+  long "connecting…" (it re-authenticated up to 4×) and could briefly show
+  "connected" before the tunnel was really up. Kept the 0.1.22 fix that stopped
+  the spurious "connection failed" (connect log reset per attempt + the GUI
+  only reads the latest attempt).
+
+### Known issue
+- "Connected but no internet/email" is openconnect's Wintun route
+  configuration not completing (the log ends at "Creating adapter" / "Removed
+  orphaned adapter", with no "route configuration done"). Seen on machines with
+  a degraded Wintun state or several Wintun/WireGuard VPNs installed
+  (Mullvad, WireGuard, Cisco AnyConnect). It is an openconnect/Wintun
+  environment issue, not the app — reboot and/or reinstall OpenConnect-GUI to
+  refresh the Wintun driver.
+
 ## [0.1.22] - 2026-06-09
 
 ### Fixed
