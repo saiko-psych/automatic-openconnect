@@ -1,0 +1,85 @@
+site_name: automatic VPN
+site_description: >-
+  Bring up a Cisco AnyConnect–compatible VPN automatically — without typing your
+  password or 2FA code every time. Windows GUI, Linux/macOS tray, and a headless
+  Python library.
+site_author: saiko-psych
+site_url: https://automatic-openconnect.readthedocs.io/
+
+repo_url: https://github.com/saiko-psych/automatic-openconnect
+repo_name: saiko-psych/automatic-openconnect
+edit_uri: edit/main/docs/
+
+copyright: MIT-licensed community tool — not affiliated with any VPN operator.
+
+# Never render local-only / internal files (also gitignored, so absent on RTD).
+exclude_docs: |
+  superpowers/
+  requirements.txt
+
+theme:
+  name: material
+  language: en
+  icon:
+    repo: fontawesome/brands/github
+    logo: material/shield-lock
+  favicon: https://raw.githubusercontent.com/squidfunk/mkdocs-material/master/docs/assets/favicon.png
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.instant
+    - navigation.tracking
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+nav:
+  - Home: index.md
+  - Install:
+      - Windows: installation/windows.md
+      - Linux: installation/linux.md
+      - macOS: installation/macos.md
+  - Using it: usage.md
+  - Two-factor (TOTP):
+      - Set up the seed: authenticator-setup.md
+      - Global hotkey: totp-hotkey.md
+  - Security: security.md
+  - Troubleshooting: troubleshooting.md
+  - For developers: developer.md
