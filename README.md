@@ -10,6 +10,7 @@ in the OS keyring, never in config or logs. Built as a thin automation layer on
 top of [openconnect-sso], which speaks the Cisco AnyConnect protocol.
 
 [![tests](https://github.com/saiko-psych/automatic-openconnect/actions/workflows/tests.yml/badge.svg)](https://github.com/saiko-psych/automatic-openconnect/actions/workflows/tests.yml)
+&nbsp;[![docs](https://readthedocs.org/projects/automatic-openconnect/badge/?version=latest)](https://automatic-openconnect.readthedocs.io/en/latest/)
 &nbsp;[![release](https://img.shields.io/github/v/release/saiko-psych/automatic-openconnect)](https://github.com/saiko-psych/automatic-openconnect/releases/latest)
 &nbsp;[![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
