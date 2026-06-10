@@ -100,6 +100,43 @@ button.
 > engine with `apt install openconnect` / `brew install openconnect` and
 > `openconnect-sso` via uv.
 
+## Setup (Linux / macOS) — lean tray
+
+On Linux/macOS `openconnect-sso` does the whole job (SAML auth **and** launching
+`openconnect` via passwordless `sudo`), so there is no scheduled-task /
+elevation dance — the app is just a small system-tray. **Linux is tested;
+macOS is written but not yet verified on a real Mac (experimental).**
+
+**Prerequisites:** `openconnect` + `openconnect-sso` installed, and a
+passwordless-sudo rule so the tray can bring the tunnel up/down:
+
+```bash
+# /etc/sudoers.d/openconnect  (edit via:  sudo visudo -f /etc/sudoers.d/openconnect)
+<your-user> ALL=(ALL) NOPASSWD: /usr/bin/openconnect, /usr/bin/killall openconnect
+```
+
+**Install + first run:**
+
+```bash
+git clone https://github.com/saiko-psych/automatic-openconnect.git
+cd automatic-openconnect
+uv venv && source .venv/bin/activate
+uv pip install -e ".[qr]"          # PyQt6 is pulled automatically; [qr] adds QR-image import
+
+# First start — detached, so your terminal stays free:
+setsid python -m automatic_openconnect </dev/null &>/dev/null &
+```
+
+A tray icon appears. On first run the **setup dialog** opens — enter e-mail,
+server, auth group, and (if not already in your keyring) password + TOTP
+(typed or imported from a QR-code image). Click the icon to connect/disconnect.
+
+**Autostart:** tray menu → **“Autostart beim Login”**. After the next login the
+tray starts on its own (no terminal). It writes
+`~/.config/autostart/automatic-openconnect.desktop` (Linux) /
+a LaunchAgent (macOS). If you used an older standalone tray, remove its
+autostart so you don't get two icons: `rm ~/.config/autostart/vpn-tray.desktop`.
+
 ## Using a different VPN
 
 Nothing is tied to any one organisation. In the desktop app, open
