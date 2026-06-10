@@ -103,6 +103,55 @@ def stop_vpn() -> None:
             pass
 
 
+# --- autostart (login) --------------------------------------------------
+
+def _autostart_path() -> Path:
+    if sys.platform == "darwin":
+        return (Path.home() / "Library" / "LaunchAgents"
+                / "at.uni-graz.automatic-openconnect.plist")
+    return (Path.home() / ".config" / "autostart"
+            / "automatic-openconnect.desktop")
+
+
+def autostart_enabled() -> bool:
+    return _autostart_path().exists()
+
+
+def set_autostart(enable: bool) -> None:
+    """Create/remove the login autostart entry. Launches THIS interpreter with
+    ``-m automatic_openconnect`` (so a venv install keeps working)."""
+    p = _autostart_path()
+    if not enable:
+        try:
+            p.unlink()
+        except FileNotFoundError:
+            pass
+        return
+    p.parent.mkdir(parents=True, exist_ok=True)
+    exe = sys.executable
+    if sys.platform == "darwin":
+        p.write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+            '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+            '<plist version="1.0"><dict>\n'
+            '  <key>Label</key><string>at.uni-graz.automatic-openconnect</string>\n'
+            '  <key>ProgramArguments</key>\n'
+            f'  <array><string>{exe}</string><string>-m</string>'
+            '<string>automatic_openconnect</string></array>\n'
+            '  <key>RunAtLoad</key><true/>\n'
+            '</dict></plist>\n')
+    else:
+        p.write_text(
+            "[Desktop Entry]\n"
+            "Type=Application\n"
+            "Name=automatic VPN (Uni Graz)\n"
+            f"Exec={exe} -m automatic_openconnect\n"
+            "Terminal=false\n"
+            "X-GNOME-Autostart-enabled=true\n"
+            "X-KDE-autostart-phase=2\n")
+
+
 # --- tray icon ----------------------------------------------------------
 
 def _icon(color: str, hollow: bool = False) -> QIcon:
@@ -275,9 +324,26 @@ def run() -> int:
     disconnect_act = menu.addAction("Trennen")
     menu.addSeparator()
     setup_act = menu.addAction("Einrichten / Zugangsdaten …")
+    autostart_act = menu.addAction("Autostart beim Login")
+    autostart_act.setCheckable(True)
+    autostart_act.setChecked(autostart_enabled())
     quit_act = menu.addAction("Beenden")
     tray.setContextMenu(menu)
     tray.show()
+
+    def toggle_autostart(checked):
+        try:
+            set_autostart(checked)
+            tray.showMessage(
+                "VPN",
+                "Autostart aktiviert." if checked else "Autostart deaktiviert.",
+                QSystemTrayIcon.MessageIcon.Information, 2500)
+        except Exception as exc:  # noqa: BLE001
+            autostart_act.setChecked(autostart_enabled())
+            tray.showMessage("VPN", f"Autostart-Fehler: {exc}",
+                             QSystemTrayIcon.MessageIcon.Critical, 4000)
+
+    autostart_act.toggled.connect(toggle_autostart)
 
     state = {"s": OFF, "blink": False, "dlg_shown": False}
 
