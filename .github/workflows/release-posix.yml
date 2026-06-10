@@ -1,0 +1,50 @@
+name: release-posix-binaries
+
+# Builds the lean Linux/macOS tray as a single-file binary on tag push and
+# attaches it to the GitHub release. Windows ships its own .exe (built from
+# packaging/automatic-vpn.spec) — this workflow is posix-only so the two never
+# clash. softprops/action-gh-release create-or-updates the release, so it
+# coexists with a manually-created release + the Windows .exe.
+#
+# NOTE: macOS is experimental (the tray is untested on a real Mac) and the
+# binary is unsigned (Gatekeeper will warn). Linux is glibc-version dependent
+# (built on ubuntu-latest); source install stays the portable fallback.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: automatic-vpn-linux-x86_64
+          - os: macos-latest
+            name: automatic-vpn-macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package + PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pyinstaller
+      - name: Build single-file tray binary
+        run: >
+          pyinstaller --onefile --name ${{ matrix.name }}
+          --collect-all PyQt6
+          packaging/posix_entry.py
+      - name: Attach to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/${{ matrix.name }}
+          fail_on_unmatched_files: true
