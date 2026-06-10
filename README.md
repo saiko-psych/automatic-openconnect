@@ -3,11 +3,11 @@
 **Bring up a Cisco AnyConnect–compatible VPN automatically — without typing
 your password or 2FA code every time.**
 
-A small **Windows desktop app** (one‑click connect/disconnect from the system
-tray) plus a **headless Python library** for wrapping a block of code in a VPN
-session. Your login password and optional TOTP 2‑factor seed live in the OS
-keyring, never in config or logs. Built as a thin automation layer on top of
-[openconnect-sso], which speaks the Cisco AnyConnect protocol.
+A **system-tray app** for **Windows, Linux and macOS** (one‑click
+connect/disconnect) plus a **headless Python library** for wrapping a block of
+code in a VPN session. Your login password and optional TOTP 2‑factor seed live
+in the OS keyring, never in config or logs. Built as a thin automation layer on
+top of [openconnect-sso], which speaks the Cisco AnyConnect protocol.
 
 [![tests](https://github.com/saiko-psych/automatic-openconnect/actions/workflows/tests.yml/badge.svg)](https://github.com/saiko-psych/automatic-openconnect/actions/workflows/tests.yml)
 &nbsp;[![release](https://img.shields.io/github/v/release/saiko-psych/automatic-openconnect)](https://github.com/saiko-psych/automatic-openconnect/releases/latest)
@@ -21,23 +21,26 @@ keyring, never in config or logs. Built as a thin automation layer on top of
 
 ## Highlights
 
-- **One click, no prompts.** Connect/disconnect from a tray icon. A one‑time
-  setup registers an elevated task (a single UAC prompt); connecting
-  afterwards needs no elevation and pops no console windows.
+- **Windows, Linux & macOS.** *Windows:* a full GUI — first run registers a
+  grant‑once elevated task (one UAC prompt), then connecting needs no elevation
+  and pops no console windows. *Linux/macOS:* a lean tray — `openconnect‑sso`
+  brings the tunnel up via passwordless `sudo`, so there's no elevation dance.
+  (Windows + Linux are tested; **macOS is experimental**.)
+- **One click, no prompts.** Connect/disconnect from a tray icon; the login
+  password and 2FA are filled in automatically.
 - **No password / 2FA typing.** Credentials come from the OS keyring. The
   TOTP feature is opt‑in.
-- **Global TOTP hotkey** (`Ctrl+Alt+P`): types the current 6‑digit code into
-  whatever field has focus — handy for any 2FA prompt, not just the VPN.
-- **Guided setup** with a live prerequisites check and one‑click fixes
-  (create the login‑field template, install `openconnect-sso`, open the
-  OpenConnect‑GUI download).
+- **Setup in the app:** enter e‑mail / server / credentials and import the TOTP
+  seed by typing it or **loading a QR‑code image** (incl. Google Authenticator
+  export QRs). On Windows the setup also checks prerequisites and offers
+  one‑click fixes (install `openconnect‑sso`, etc.).
+- **Global TOTP hotkey** (`Ctrl+Alt+P`, Windows): types the current 6‑digit
+  code into whatever field has focus — handy for any 2FA prompt.
 - **Customisable UI:** light/dark theme, accent colour, per‑state status
-  colours, autostart at login, start‑minimised, tray notifications.
-- **Crash‑safe:** a watchdog tears the tunnel down if the app dies; closing
-  while connected asks whether to disconnect or keep it up in the background.
-- **English / German**, switchable at runtime.
-- **QR seed import** from an authenticator screenshot (incl. Google
-  Authenticator export QR codes).
+  colours, autostart at login, start‑minimised, tray notifications. English /
+  German, switchable at runtime.
+- **Close is your choice:** while connected, closing the window asks whether to
+  disconnect or keep the tunnel running in the background.
 - **Headless library** for CI/servers, with the same keyring‑backed login.
 
 ## Setup (Windows)
