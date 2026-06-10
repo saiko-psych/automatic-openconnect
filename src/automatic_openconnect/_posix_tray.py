@@ -26,7 +26,7 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import (QApplication, QSystemTrayIcon, QMenu, QDialog,
                              QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-                             QPushButton)
+                             QPushButton, QComboBox, QFileDialog, QMessageBox)
 from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor
 from PyQt6.QtCore import QTimer, Qt
 
@@ -117,42 +117,139 @@ def _icon(color: str, hollow: bool = False) -> QIcon:
     return QIcon(px)
 
 
-class CredentialDialog(QDialog):
-    """Set the openconnect-sso keyring entries (password + optional TOTP)."""
+def _totp_secret_from_uri(uri: str) -> str:
+    """Extract the Base32 TOTP secret from a scanned QR payload.
 
-    def __init__(self, email: str, parent=None):
+    Handles both the plain ``otpauth://totp/...?secret=BASE32`` form and
+    Google Authenticator's ``otpauth-migration://offline?data=<base64 protobuf>``
+    export (first account only). Raises ValueError if it can't.
+    """
+    import base64
+    import urllib.parse as up
+
+    uri = (uri or "").strip()
+    if uri.startswith("otpauth://"):
+        q = up.parse_qs(up.urlparse(uri).query)
+        sec = (q.get("secret") or [""])[0]
+        if sec:
+            return sec.replace(" ", "").upper()
+        raise ValueError("otpauth-URI ohne secret-Parameter.")
+    if uri.startswith("otpauth-migration://"):
+        data = up.unquote(uri.split("data=", 1)[1])
+        raw = base64.b64decode(data)
+        # Minimal protobuf walk: outer field 1 (OtpParameters), inner field 1
+        # (secret bytes) → Base32. Works for the common single-account export.
+        pos = 0
+        if raw[pos] != 0x0A:
+            raise ValueError("Unerwartetes Migrations-Format.")
+        pos += 2                       # outer tag + length byte
+        if raw[pos] != 0x0A:
+            raise ValueError("Kein secret-Feld im Export.")
+        pos += 1
+        slen = raw[pos]; pos += 1
+        secret_bytes = raw[pos:pos + slen]
+        return base64.b32encode(secret_bytes).decode().rstrip("=")
+    raise ValueError("Kein TOTP-QR-Code (otpauth / otpauth-migration) erkannt.")
+
+
+def _totp_secret_from_image(path: str) -> str:
+    """Decode a QR-code image file → TOTP Base32 secret. Needs the ``qr`` extra
+    (``pip install -e '.[qr]'`` → opencv). Raises with a clear hint otherwise."""
+    try:
+        import cv2  # from the [qr] extra (opencv-python-headless)
+    except ImportError:
+        raise ValueError("QR-Upload braucht opencv: pip install -e '.[qr]'")
+    img = cv2.imread(path)
+    if img is None:
+        raise ValueError("Bild konnte nicht gelesen werden.")
+    data, _pts, _ = cv2.QRCodeDetector().detectAndDecode(img)
+    if not data:
+        raise ValueError("Kein QR-Code im Bild gefunden.")
+    return _totp_secret_from_uri(data)
+
+
+class SetupDialog(QDialog):
+    """Configure everything via the GUI: e-mail + server + auth group (saved to
+    config.json) and password + TOTP secret (saved to the openconnect-sso
+    keyring). TOTP can be typed or imported from a QR-code image."""
+
+    def __init__(self, cfg: dict, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Uni Graz VPN — Zugangsdaten")
-        self.setMinimumWidth(380)
+        self.setWindowTitle("Uni Graz VPN — Einrichtung")
+        self.setMinimumWidth(420)
         lay = QVBoxLayout(self)
-        lay.addWidget(QLabel("Zugangsdaten im Schlüsselbund speichern:"))
+
         lay.addWidget(QLabel("E-Mail (Uni Graz):"))
-        self.email = QLineEdit(email)
+        self.email = QLineEdit(cfg.get("user_email", ""))
         lay.addWidget(self.email)
-        lay.addWidget(QLabel("Passwort:"))
+
+        lay.addWidget(QLabel("Server:"))
+        self.server = QLineEdit(cfg.get("server", "univpn.uni-graz.at"))
+        lay.addWidget(self.server)
+
+        lay.addWidget(QLabel("Gruppe (authgroup):"))
+        self.group = QComboBox()
+        self.group.setEditable(True)
+        self.group.addItems(["Studierende", "Bedienstete"])
+        self.group.setCurrentText(cfg.get("authgroup", "Studierende"))
+        lay.addWidget(self.group)
+
+        lay.addWidget(QLabel("Passwort (leer = unverändert):"))
         self.pw = QLineEdit()
         self.pw.setEchoMode(QLineEdit.EchoMode.Password)
+        self.pw.setPlaceholderText("nur ändern, wenn nötig")
         lay.addWidget(self.pw)
-        lay.addWidget(QLabel("TOTP-Secret (Base32, optional):"))
+
+        lay.addWidget(QLabel("TOTP-Secret (Base32, leer = unverändert):"))
+        totp_row = QHBoxLayout()
         self.totp = QLineEdit()
-        lay.addWidget(self.totp)
+        self.totp.setPlaceholderText("z. B. JBSWY3DPEHPK3PXP")
+        totp_row.addWidget(self.totp)
+        qr_btn = QPushButton("QR-Bild …")
+        qr_btn.clicked.connect(self._load_qr)
+        totp_row.addWidget(qr_btn)
+        lay.addLayout(totp_row)
+
         row = QHBoxLayout()
         cancel = QPushButton("Abbrechen")
         cancel.clicked.connect(self.reject)
         save = QPushButton("Speichern")
+        save.setDefault(True)
         save.clicked.connect(self.accept)
         row.addWidget(cancel)
         row.addWidget(save)
         lay.addLayout(row)
-        self.pw.setFocus()
+        self.email.setFocus()
 
+    def _load_qr(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "QR-Code-Bild wählen", "",
+            "Bilder (*.png *.jpg *.jpeg *.bmp *.gif);;Alle Dateien (*)")
+        if not path:
+            return
+        try:
+            self.totp.setText(_totp_secret_from_image(path))
+            QMessageBox.information(self, "TOTP", "TOTP-Secret aus QR gelesen.")
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(self, "QR-Fehler", str(exc))
 
-def _save_credentials(email: str, password: str, totp: str) -> None:
-    import keyring
-    if password:
-        keyring.set_password(SSO_KEYRING, email, password)
-    if totp:
-        keyring.set_password(SSO_KEYRING, f"totp/{email}", totp.replace(" ", ""))
+    def save(self) -> None:
+        """Persist e-mail/server/group to config.json and password/TOTP to the
+        keyring (only the fields that were filled in)."""
+        email = self.email.text().strip()
+        data = cfgmod.load_config()
+        av = data.setdefault("auto_vpn", {})
+        av["user_email"] = email
+        av["server"] = self.server.text().strip() or "univpn.uni-graz.at"
+        av["authgroup"] = self.group.currentText().strip()
+        cfgmod.save_config(data)
+        if self.pw.text() or self.totp.text():
+            import keyring
+            if self.pw.text():
+                keyring.set_password(SSO_KEYRING, email, self.pw.text())
+            if self.totp.text():
+                keyring.set_password(SSO_KEYRING, f"totp/{email}",
+                                     self.totp.text().replace(" ", "").upper())
 
 
 def run() -> int:
@@ -177,7 +274,7 @@ def run() -> int:
     connect_act = menu.addAction("Verbinden")
     disconnect_act = menu.addAction("Trennen")
     menu.addSeparator()
-    creds_act = menu.addAction("Zugangsdaten ändern …")
+    setup_act = menu.addAction("Einrichten / Zugangsdaten …")
     quit_act = menu.addAction("Beenden")
     tray.setContextMenu(menu)
     tray.show()
@@ -185,6 +282,9 @@ def run() -> int:
     state = {"s": OFF, "blink": False, "dlg_shown": False}
 
     def do_connect():
+        if not _vpn_cfg().get("user_email"):
+            show_setup()            # can't connect without an e-mail
+            return
         state["s"] = CONNECTING
         state["dlg_shown"] = False
         start_vpn()
@@ -193,22 +293,20 @@ def run() -> int:
         stop_vpn()
         state["s"] = OFF
 
-    def show_creds():
-        email = _vpn_cfg().get("user_email", "")
-        dlg = CredentialDialog(email)
+    def show_setup():
+        dlg = SetupDialog(_vpn_cfg())
         if dlg.exec() == QDialog.DialogCode.Accepted:
             try:
-                _save_credentials(dlg.email.text().strip(),
-                                  dlg.pw.text(), dlg.totp.text())
-                tray.showMessage("VPN", "Zugangsdaten gespeichert.",
+                dlg.save()
+                tray.showMessage("VPN", "Einstellungen gespeichert.",
                                  QSystemTrayIcon.MessageIcon.Information, 3000)
             except Exception as exc:  # noqa: BLE001
-                tray.showMessage("VPN", f"Fehler: {exc}",
-                                 QSystemTrayIcon.MessageIcon.Critical, 4000)
+                tray.showMessage("VPN", f"Fehler beim Speichern: {exc}",
+                                 QSystemTrayIcon.MessageIcon.Critical, 5000)
 
     connect_act.triggered.connect(do_connect)
     disconnect_act.triggered.connect(do_disconnect)
-    creds_act.triggered.connect(show_creds)
+    setup_act.triggered.connect(show_setup)
     quit_act.triggered.connect(app.quit)
 
     def on_activated(reason):
@@ -246,7 +344,7 @@ def run() -> int:
                 disconnect_act.setEnabled(False)
                 if not state["dlg_shown"]:
                     state["dlg_shown"] = True
-                    show_creds()
+                    show_setup()
         elif state["s"] == FAILED:
             tray.setIcon(ic_red)
             connect_act.setEnabled(True)
@@ -263,6 +361,11 @@ def run() -> int:
     timer.timeout.connect(tick)
     timer.start(1000)
     tick()
+
+    # First run with no e-mail configured → open setup right away so the user
+    # never faces a tray that silently can't connect.
+    if not _vpn_cfg().get("user_email"):
+        show_setup()
 
     import signal
     signal.signal(signal.SIGINT, signal.SIG_DFL)
