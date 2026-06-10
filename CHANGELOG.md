@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.28] - 2026-06-10
+
+### Documentation
+- Full **Read the Docs** site (MkDocs Material): per-OS install
+  (Windows/Linux/macOS), usage, two-factor/TOTP, security, troubleshooting and a
+  developer/architecture page. README slimmed to a landing page that points to
+  the docs; the GitHub "About" links to the site. No application code changes
+  since 0.1.27 — this tag exists so the docs ship in a release (RTD "stable").
+
 ## [0.1.27] - 2026-06-10
 
 ### Added
