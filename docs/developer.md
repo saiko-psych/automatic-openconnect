@@ -44,7 +44,7 @@ orchestrate. On Windows neither is true, hence the heavier machinery.
 
 ```bash
 uv venv && source .venv/bin/activate   # (PowerShell: .venv\Scripts\activate)
-uv pip install -e ".[dev]"             # add ,qr for QR import; gui is auto on Linux/macOS
+uv pip install -e ".[dev,gui]"         # [gui] = PyQt6 (tray/GUI); add ,qr for QR import
 python -m automatic_openconnect        # GUI (Windows) / tray (Linux/macOS)
 ```
 

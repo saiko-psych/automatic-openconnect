@@ -41,8 +41,12 @@ sudo visudo -f /etc/sudoers.d/openconnect
     git clone https://github.com/saiko-psych/automatic-openconnect.git
     cd automatic-openconnect
     uv venv && source .venv/bin/activate
-    uv pip install -e ".[qr]"   # PyQt6 is pulled in automatically; [qr] adds QR-image import
+    uv pip install -e ".[gui,qr]"   # [gui] = PyQt6 + the tray; [qr] adds QR-image import
     ```
+
+    !!! info "Headless server? Skip `[gui]`"
+        `pip install -e .` (no extras) installs just the **library** (keyring +
+        pyotp, no Qt) for `with auto_vpn_session(cfg): …`. The tray needs `[gui]`.
 
 === "Prebuilt binary"
     Download `automatic-vpn-linux-x86_64` from the

@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.29] - 2026-06-10
+
+### Changed
+- **Headless install is now lean (#5).** Moved `PyQt6` and `pynput` out of the
+  core dependencies into the `[gui]` extra. `pip install automatic-openconnect`
+  now pulls only the headless library (`keyring` + `pyotp`) — no Qt / pynput, so
+  `import automatic_openconnect; auto_vpn_session(cfg)` runs on a box with **no
+  display** (container / server / the termino consumer). **Desktop & tray users
+  must now add the `[gui]` extra:** `pip install "automatic-openconnect[gui]"`
+  (add `,qr` for QR-image import). Windows `.exe` is unaffected (bundles PyQt6).
+
 ## [0.1.28] - 2026-06-10
 
 ### Documentation

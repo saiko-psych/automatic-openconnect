@@ -16,7 +16,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "automatic-openconnect"
-version = "0.1.28"
+version = "0.1.29"
 description = "Cross-platform headless openconnect-sso automation: bring a Cisco AnyConnect compatible VPN up around your code, with login PW + TOTP seed from the OS keyring. Community tool, not supported by uniIT."
 readme = "README.md"
 license = { text = "MIT" }
@@ -36,26 +36,21 @@ classifiers = [
     "Topic :: System :: Networking",
 ]
 
+# Core = the HEADLESS library only (keyring-backed login + TOTP). Importing the
+# package and calling auto_vpn_session() must work on a box with no display, so
+# the desktop stack (PyQt6 tray/GUI + pynput global hotkey) lives in [gui], NOT
+# here. openconnect-sso / openconnect are shelled out to, never imported.
 dependencies = [
     "keyring>=25.0",
     "pyotp>=2.9",
-    "pynput>=1.7",
-    # On Linux/macOS the tray IS the app and openconnect-sso pulls PyQt6 too,
-    # so depend on it there → `pip install -e .` just works. On Windows PyQt6
-    # stays out-of-band (the frozen .exe bundles it; dev uses --with PyQt6).
-    "PyQt6>=6.5; sys_platform != 'win32'",
 ]
-
-# NOTE: on WINDOWS, openconnect-sso and PyQt6 are intentionally NOT hard deps —
-# they are heavyweight and installed out-of-band via `uv tool install --with`
-# (or bundled into the frozen .exe). openconnect-sso is always shelled out to.
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
-gui = ["PyQt6>=6.5"]
-# Optional: decode a TOTP QR-code image at setup. Self-contained wheels on
-# Windows (no system deps). Install with: uv tool install --with
-# opencv-python-headless ...
+# Desktop app: the Windows GUI + the Linux/macOS tray, plus the global TOTP
+# hotkey. Install with `pip install -e ".[gui]"` (add ,qr for QR-image import).
+gui = ["PyQt6>=6.5", "pynput>=1.7"]
+# Optional: decode a TOTP QR-code image at setup (opencv, self-contained wheels).
 qr = ["opencv-python-headless>=4.8"]
 
 [project.gui-scripts]
