@@ -831,53 +831,21 @@ def _cli_up(args) -> int:
     cfg = _load_config(args.config)
     cfg.setdefault("auto_vpn", {})
     cfg["auto_vpn"]["enabled"] = True
-    from . import session
-    auto_reconnect = bool(cfg["auto_vpn"].get("auto_reconnect", True))
     try:
-        with auto_vpn_session_win(cfg) as sess:
+        with auto_vpn_session_win(cfg):
             print("[auto_vpn_win] Tunnel is up. Press Ctrl-C to disconnect.",
                   file=sys.stderr)
-            reconnect_fails = 0
+            sys.stderr.flush()
             try:
-                # Monitor loop. Two jobs:
-                #  * Watchdog: if a GUI started this connection and then died
-                #    (crash / hard kill) without opting into background
-                #    operation, its heartbeat goes stale → tear down so the
-                #    tunnel never lingers invisibly. (CLI-only use has no
-                #    session file, so should_teardown stays False.)
-                #  * Auto-reconnect: if openconnect dies (a brief network
-                #    outage) while we own the tunnel, re-establish it
-                #    unattended (re-auth via stored creds + TOTP).
+                # Just hold the tunnel open. Deliberately NO auto-reconnect and
+                # NO heartbeat-watchdog: the reconnect monitor re-established the
+                # tunnel the instant the user clicked Disconnect (→ it took two
+                # clicks) and turned a flaky first attempt into a slow re-auth
+                # loop ("reconnected" after a long wait). This matches the proven
+                # termino model — one clean attempt; reconnect manually after a
+                # network drop.
                 while True:
-                    time.sleep(5)
-                    if session.should_teardown(time.time()):
-                        print("[auto_vpn_win] GUI heartbeat lost — tearing "
-                              "down tunnel", file=sys.stderr)
-                        break
-                    if not (auto_reconnect and sess is not None) or sess.alive():
-                        reconnect_fails = 0
-                        continue
-                    if reconnect_fails >= _MAX_RECONNECT_ATTEMPTS:
-                        continue  # gave up reconnecting; keep watching heartbeat
-                    reconnect_fails += 1
-                    print(f"[auto_vpn_win] tunnel dropped — reconnecting "
-                          f"(attempt {reconnect_fails}/"
-                          f"{_MAX_RECONNECT_ATTEMPTS})…", file=sys.stderr)
-                    sys.stderr.flush()
-                    try:
-                        sess.reconnect()
-                        reconnect_fails = 0
-                        print("[auto_vpn_win] reconnected.", file=sys.stderr)
-                    except BaseException as exc:  # noqa: BLE001
-                        print(f"[auto_vpn_win] reconnect failed: {exc}",
-                              file=sys.stderr)
-                        if reconnect_fails >= _MAX_RECONNECT_ATTEMPTS:
-                            print("[auto_vpn_win] giving up auto-reconnect — "
-                                  "reconnect manually once the network is back.",
-                                  file=sys.stderr)
-                        else:
-                            time.sleep(min(30, 5 * reconnect_fails))  # backoff
-                    sys.stderr.flush()
+                    time.sleep(60)
             except KeyboardInterrupt:
                 print("\n[auto_vpn_win] Ctrl-C received, tearing down",
                       file=sys.stderr)

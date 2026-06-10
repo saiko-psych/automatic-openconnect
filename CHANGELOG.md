@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.25] - 2026-06-10
+
+### Changed
+- **Removed the auto-reconnect monitor (and disabled the heartbeat-watchdog) from
+  the connect loop.** The monitor re-established the tunnel the instant you clicked
+  Disconnect — so it took TWO clicks — and turned a flaky first attempt into a slow
+  re-auth loop ("reconnected" after a long wait, most noticeable right after
+  re-registering via Configuration → Save). The tunnel is now brought up with one
+  clean attempt and simply held until you disconnect, matching the proven
+  standalone termino script. Reconnect manually after a network drop.
+
 ## [0.1.24] - 2026-06-09
 
 ### Fixed
