@@ -30,6 +30,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     "btn.back": {"en": "Back", "de": "Zurück"},
     "status.connected": {"en": "Connected", "de": "Verbunden"},
     "status.disconnected": {"en": "Disconnected", "de": "Getrennt"},
+    "status.disconnecting": {"en": "Disconnecting …", "de": "Trenne …"},
     "status.failed_log": {"en": "Connection failed — “Show log”",
                           "de": "Verbindung fehlgeschlagen — „Log anzeigen“"},
     "status.timeout_log": {"en": "Timed out — “Show log”",

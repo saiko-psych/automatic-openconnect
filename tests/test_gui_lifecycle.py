@@ -10,6 +10,7 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import threading
 import time
 import unittest
 from unittest import mock
@@ -129,6 +130,43 @@ class TestCloseEvent(_ExitBase):
             inst.return_value.quit.assert_called_once()   # the app exits
         self.run_.assert_called_once_with(gui.tw.TASK_DOWN)  # tunnel torn down
         self.assertTrue(ev.isAccepted())
+
+
+class TestDisconnectingStatus(unittest.TestCase):
+    """Clicking Disconnect shows 'Disconnecting …' while the teardown runs,
+    instead of freezing and jumping straight to 'Disconnected'."""
+
+    def setUp(self):
+        mock.patch("automatic_openconnect.gui.is_vpn_up",
+                   return_value=True).start()
+        mock.patch("automatic_openconnect.gui.session.write_heartbeat").start()
+        mock.patch("automatic_openconnect.gui.session.clear").start()
+        self.addCleanup(mock.patch.stopall)
+        self.cv = gui.ControlView(on_settings=lambda: None,
+                                  on_app_settings=lambda: None)
+        self.cv._timer.stop()
+        self.addCleanup(self.cv.deleteLater)
+
+    def test_shows_disconnecting_during_teardown(self):
+        gate = threading.Event()
+        with mock.patch("automatic_openconnect.gui.tw.run",
+                        side_effect=lambda *a, **k: gate.wait(5)) as run, \
+             mock.patch("automatic_openconnect.gui.tw.end") as end:
+            self.cv._disconnect()
+            # Synchronous: status flips to "Disconnecting …" before the teardown
+            # (still blocked on the gate) can finish.
+            self.assertTrue(self.cv._disconnecting)
+            self.assertEqual(self.cv.status.text(),
+                             gui.t("status.disconnecting"))
+            self.assertFalse(self.cv.disconnect_btn.isEnabled())
+            gate.set()                       # let the teardown thread finish
+            for _ in range(60):
+                if not self.cv._disconnecting:
+                    break
+                time.sleep(0.05)
+            self.assertFalse(self.cv._disconnecting)
+            run.assert_called_once_with(gui.tw.TASK_DOWN)
+            end.assert_called_once_with(gui.tw.TASK_UP)
 
 
 if __name__ == "__main__":

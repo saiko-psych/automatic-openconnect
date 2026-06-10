@@ -853,6 +853,8 @@ class ControlView(QWidget):
         self._on_app_settings = on_app_settings   # app settings
         self._connecting = 0   # >0 while a connect attempt is in flight
         self._failed = False
+        self._disconnecting = False   # True while the teardown thread runs
+        self._disconnect_error = None  # set by the teardown thread on failure
         self.on_state = None   # MainWindow sets this to update the tray icon
 
         root = QVBoxLayout(self)
@@ -1089,6 +1091,21 @@ class ControlView(QWidget):
         append_connect_log(cfg_path, "\n".join(lines))
 
     def refresh(self):
+        # While the (off-thread) teardown runs, show "Disconnecting …" and don't
+        # let a still-running openconnect flip us back to "Connected". The
+        # teardown thread clears _disconnecting when done; the next tick falls
+        # through to the normal logic below (→ "Disconnected").
+        if self._disconnecting:
+            self._set_dot(_state_color("connecting"))
+            self.status.setText(t("status.disconnecting"))
+            self.connect_btn.setEnabled(False)
+            self.disconnect_btn.setEnabled(False)
+            if self.on_state:
+                self.on_state("connecting")
+            return
+        if self._disconnect_error is not None:
+            err, self._disconnect_error = self._disconnect_error, None
+            QMessageBox.critical(self, t("generic.error"), str(err))
         up = is_vpn_up()
         if up:
             self._connecting = 0
@@ -1213,16 +1230,38 @@ class ControlView(QWidget):
             self.refresh()
 
     def _disconnect(self):
+        if self._disconnecting:
+            return   # teardown already in flight — ignore the extra click
         self._stop_heartbeat()   # we no longer own a session
-        try:
-            tw.run(tw.TASK_DOWN)
-            tw.end(tw.TASK_UP)   # stop the lingering up-loop so reconnect works
-            session.clear()      # no active GUI-owned session anymore
-            self._connecting = 0
-            self._failed = False
-        except Exception as exc:
-            QMessageBox.critical(self, t("generic.error"), str(exc))
-        self.refresh()
+        self._connecting = 0
+        self._failed = False
+        self._disconnect_error = None
+        # Show "Disconnecting …" immediately. The teardown shells out to schtasks
+        # (run DOWN + end UP), which can take a second or two — run it on a daemon
+        # thread so the UI stays responsive and actually paints this state instead
+        # of freezing and jumping straight to "Disconnected".
+        self._disconnecting = True
+        self._set_dot(_state_color("connecting"))
+        self.status.setText(t("status.disconnecting"))
+        self.connect_btn.setEnabled(False)
+        self.disconnect_btn.setEnabled(False)
+        if self.on_state:
+            self.on_state("connecting")
+
+        def _teardown():
+            try:
+                tw.run(tw.TASK_DOWN)
+                tw.end(tw.TASK_UP)   # stop the lingering up-loop
+                session.clear()      # no active GUI-owned session anymore
+            except Exception as exc:  # surfaced by refresh() on the UI thread
+                self._disconnect_error = exc
+            finally:
+                # Cleared last; refresh() (timer, UI thread) then transitions to
+                # "Disconnected". A plain bool write is safe to read cross-thread.
+                self._disconnecting = False
+
+        threading.Thread(target=_teardown, daemon=True,
+                         name="vpn-disconnect").start()
 
     def _show_log(self):
         path = connect_log_path(str(cfgmod.config_path()))

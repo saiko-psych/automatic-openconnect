@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.26] - 2026-06-10
+
+### Added
+- A **"Disconnecting …"** status while the tunnel tears down. The teardown
+  (schtasks run DOWN + end UP) now runs on a background thread, so the UI shows
+  "Disconnecting …" immediately instead of briefly freezing and jumping straight
+  to "Disconnected".
+
 ## [0.1.25] - 2026-06-10
 
 ### Changed
