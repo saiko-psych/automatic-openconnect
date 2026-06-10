@@ -46,7 +46,9 @@ sudo visudo -f /etc/sudoers.d/openconnect
 
     !!! info "Headless server? Skip `[gui]`"
         `pip install -e .` (no extras) installs just the **library** (keyring +
-        pyotp, no Qt) for `with auto_vpn_session(cfg): …`. The tray needs `[gui]`.
+        pyotp, no Qt). Use it from code — `with auto_vpn_session(cfg): …` — or
+        from the shell: **`python -m automatic_openconnect up | down | status`**
+        (no tray/Qt needed). Only the tray needs `[gui]`.
 
 === "Prebuilt binary"
     Download `automatic-vpn-linux-x86_64` from the

@@ -5,6 +5,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [0.1.29] - 2026-06-10
 
+### Added
+- **Headless Linux CLI:** `python -m automatic_openconnect up | down | status`
+  brings the tunnel up/down or reports status on a server **without the tray or
+  PyQt6** — it works with the plain core install. (No-args still launches the
+  tray, which needs `[gui]`.) The termino consumer keeps using the library
+  (`with auto_vpn_session(cfg): …`); this is for manual shell control.
+
 ### Changed
 - **Headless install is now lean (#5).** Moved `PyQt6` and `pynput` out of the
   core dependencies into the `[gui]` extra. `pip install automatic-openconnect`

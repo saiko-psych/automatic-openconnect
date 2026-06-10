@@ -463,3 +463,75 @@ def auto_vpn_session(config_data: dict):
         if cfg.get("down_on_exit", True) and not was_already_up:
             print("[auto_vpn] Closing tunnel", file=sys.stderr)
             _stop_tunnel(server_hint)
+
+
+# --- standalone headless CLI --------------------------------------------
+# `python -m automatic_openconnect up|down|status` on a headless Linux box
+# (server / container / the termino consumer) — no tray, no Qt, so it works
+# with the plain `pip install automatic-openconnect` core install. termino
+# itself uses the library (`with auto_vpn_session(cfg): …`); this is for
+# bringing the tunnel up/down by hand from a shell.
+
+def _cli_config(path: Optional[str]) -> dict:
+    """Load config from --config, or the app's default config location."""
+    if path:
+        import json
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    from . import config as cfgmod
+    return cfgmod.load_config()
+
+
+def _cli_server_hint(cfg: dict) -> str:
+    server = (cfg.get("auto_vpn") or {}).get("server", "univpn.uni-graz.at")
+    return server.split(".")[0]
+
+
+def _cli_up(args) -> int:
+    _check_linux("up")
+    cfg = _cli_config(args.config)
+    cfg.setdefault("auto_vpn", {})["enabled"] = True
+    print("[auto_vpn] bringing tunnel up …", file=sys.stderr)
+    try:
+        with auto_vpn_session(cfg):
+            print("[auto_vpn] Tunnel is up. Press Ctrl-C to disconnect.",
+                  file=sys.stderr)
+            try:
+                while True:
+                    time.sleep(60)
+            except KeyboardInterrupt:
+                print("\n[auto_vpn] Ctrl-C received, tearing down.",
+                      file=sys.stderr)
+    except VPNError as exc:
+        print(f"[auto_vpn] FAIL: {exc}", file=sys.stderr)
+        return 2
+    return 0
+
+
+def _cli_down(args) -> int:
+    _stop_tunnel(_cli_server_hint(_cli_config(args.config)))
+    print("[auto_vpn] tunnel torn down (if it was up).", file=sys.stderr)
+    return 0
+
+
+def _cli_status(args) -> int:
+    up = is_vpn_up(_cli_server_hint(_cli_config(args.config)))
+    print("openconnect is RUNNING" if up else "openconnect is NOT running")
+    return 0 if up else 1
+
+
+def main_cli() -> int:
+    import argparse
+    parser = argparse.ArgumentParser(
+        prog="python -m automatic_openconnect",
+        description="Headless Uni-Graz VPN connect/disconnect for Linux "
+                    "servers (no GUI; needs only the core install — the tray "
+                    "needs the [gui] extra).")
+    parser.add_argument("--config", default=None,
+                        help="config.json path (default: the app config location)")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("up", help="bring the tunnel up and block until Ctrl-C")
+    sub.add_parser("down", help="tear down a running tunnel")
+    sub.add_parser("status", help="print whether openconnect is running")
+    args = parser.parse_args()
+    return {"up": _cli_up, "down": _cli_down, "status": _cli_status}[args.cmd](args)
