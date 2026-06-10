@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.27] - 2026-06-10
+
+### Added
+- **Linux & macOS support — a lean system-tray app.** There openconnect-sso does
+  the SAML auth AND launches openconnect via passwordless sudo, so there is no
+  scheduled-task / elevation dance: `python -m automatic_openconnect` runs a
+  small tray (connect/disconnect, a setup dialog for server/group + password +
+  TOTP with QR-image import, and a login-autostart toggle). **Linux tested;
+  macOS experimental** (written, not yet verified on a real Mac). See the README
+  "Setup (Linux / macOS)" section. The Windows app is unchanged.
+
 ## [0.1.26] - 2026-06-10
 
 ### Added
