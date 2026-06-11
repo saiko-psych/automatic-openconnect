@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.30] - 2026-06-11
+
+### Fixed
+- **No more spurious red "timed out" flash during a slow connect (Windows).** The
+  GUI's connect window was only ~70 s, which openconnect-sso's embedded login
+  browser can exceed when it renders slowly (Skia/GPU stalls) — so the GUI
+  flashed "Zeitüberschreitung / timed out" and then "fixed itself" once the
+  tunnel came up moments later. Widened the window to 240 s so the **backend's**
+  own outcome decides — tunnel up, or a real "FAIL:" — instead of a too-short GUI
+  timer. (The connect itself was already succeeding; this only stops the false
+  error flash. Genuinely flaky Wintun/auth attempts still surface a real failure.)
+
 ## [0.1.29] - 2026-06-10
 
 ### Added

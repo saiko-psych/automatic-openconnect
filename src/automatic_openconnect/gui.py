@@ -44,11 +44,17 @@ from ._windows import is_vpn_up, connect_log_path, append_connect_log
 from .secrets import (get_uni_login_password, get_uni_totp_secret,
                       set_uni_login_password, set_uni_totp_secret)
 
-# How many 2-second status polls to wait for the tunnel before declaring
-# the connect attempt failed. Must exceed the backend's worst case (auth +
-# tunnel + orphaned-adapter cleanup can take ~60 s), so the GUI doesn't
-# give up while the connection is actually still succeeding. ~70 s.
-_CONNECT_TIMEOUT_TICKS = 35
+# How many 2-second status polls to wait for the tunnel before declaring the
+# connect attempt failed. Must comfortably exceed the BACKEND's own worst case
+# so the GUI never flashes a spurious "timed out" while the connection is still
+# succeeding: openconnect-sso's auth alone can take up to 180 s (its internal
+# timeout) when the embedded login browser renders slowly (Skia/GPU stalls),
+# plus ~40 s for the tunnel + route config. At 120×2 s = 240 s the backend
+# always resolves first — via success (tunnel up) or a real "FAIL:" — so this
+# GUI timer is just a final safety net, not the thing that decides the outcome.
+# (Was 70 s, which a slow login browser could exceed → red "timed out" flash
+# that then "fixed itself" when the tunnel came up moments later.)
+_CONNECT_TIMEOUT_TICKS = 120
 
 _REPO_URL = "https://github.com/saiko-psych/automatic-openconnect"
 # Where the in-app "Report a bug" button sends the user. The chooser lets
