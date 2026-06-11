@@ -859,6 +859,10 @@ class ControlView(QWidget):
         self._on_app_settings = on_app_settings   # app settings
         self._connecting = 0   # >0 while a connect attempt is in flight
         self._failed = False
+        self._connect_t = 0.0  # wall-clock of the last Connect click — the
+                               # connect log is only trusted once it's been
+                               # (re)written at/after this (else it's stale from
+                               # the previous attempt; see refresh()).
         self._disconnecting = False   # True while the teardown thread runs
         self._disconnect_error = None  # set by the teardown thread on failure
         self.on_state = None   # MainWindow sets this to update the tray icon
@@ -985,6 +989,19 @@ class ControlView(QWidget):
                 return f.read()
         except OSError:
             return ""
+
+    def _connect_log_fresh(self) -> bool:
+        """True once the connect log has been (re)written for the CURRENT
+        attempt — i.e. its mtime is at/after the last Connect click. The
+        elevated up-task owns the log and the non-elevated GUI can't reliably
+        truncate it, so for the first 1-3 s the file still holds the PREVIOUS
+        attempt's lines; until it's freshly written they must not drive the
+        status (a stale "FAIL:" would flash a spurious "connection failed")."""
+        try:
+            return os.path.getmtime(
+                connect_log_path(str(cfgmod.config_path()))) >= self._connect_t
+        except OSError:
+            return True
 
     def _diagnose_timeout(self) -> None:
         """On connect timeout, append a clear diagnostic to the log.
@@ -1126,6 +1143,16 @@ class ControlView(QWidget):
         elif self._connecting > 0:
             self._connecting -= 1
             step = gl.connect_step_label(self._read_log())
+            # The connect log is owned by the elevated up-task, so this
+            # non-elevated GUI can't truncate it. For the first 1-3 s of a new
+            # attempt the file STILL holds the PREVIOUS attempt's lines — a
+            # stale "FAIL:" there flashed a spurious "connection failed" before
+            # the new up-task overwrote it (the real "kurz Error, läuft dann
+            # weiter" bug). Trust the log only once it has been freshly written
+            # for THIS attempt (mtime >= the click time); until then it's just
+            # "preparing".
+            if not self._connect_log_fresh():
+                step = "step.preparing"
             if step == "step.failed":
                 self._connecting = 0
                 self._failed = True
@@ -1181,6 +1208,11 @@ class ControlView(QWidget):
                                   on_setup=self._on_settings)
             return
         try:
+            # Mark the click time: refresh() ignores any "FAIL:"/step in the
+            # connect log until the file is (re)written at/after now — otherwise
+            # a stale line from the PREVIOUS attempt (the GUI can't truncate the
+            # elevated task's log) flashes a spurious "connection failed".
+            self._connect_t = time.time()
             # Start the watchdog heartbeat (daemon thread) BEFORE the task
             # starts so the backend sees an owning GUI from the first moment.
             self._start_heartbeat()

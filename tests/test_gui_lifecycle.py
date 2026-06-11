@@ -10,6 +10,8 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import pathlib
+import tempfile
 import threading
 import time
 import unittest
@@ -167,6 +169,50 @@ class TestDisconnectingStatus(unittest.TestCase):
             self.assertFalse(self.cv._disconnecting)
             run.assert_called_once_with(gui.tw.TASK_DOWN)
             end.assert_called_once_with(gui.tw.TASK_UP)
+
+
+class TestStaleConnectLogGuard(unittest.TestCase):
+    """The recurring 'shows error for a moment, then connects' fix: the GUI
+    can't truncate the elevated up-task's connect log, so right after Connect
+    the file still holds the PREVIOUS attempt's lines. A stale 'FAIL:' there
+    must NOT flash 'connection failed' — only a 'FAIL:' written for the CURRENT
+    attempt (log mtime >= the click time) counts."""
+
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.gettempdir()) / f"aoc-clog-{id(self)}.log"
+        self.tmp.write_text(
+            "[auto_vpn_win] CLI mode: bringing tunnel up\n"
+            "[auto_vpn_win] FAIL: openconnect-sso failed (exit 1).\n",
+            encoding="utf-8")
+        self.addCleanup(lambda: self.tmp.unlink(missing_ok=True))
+        mock.patch("automatic_openconnect.gui.connect_log_path",
+                   return_value=str(self.tmp)).start()
+        mock.patch("automatic_openconnect.gui.is_vpn_up",
+                   return_value=False).start()
+        self.addCleanup(mock.patch.stopall)
+        self.cv = gui.ControlView(on_settings=lambda: None,
+                                  on_app_settings=lambda: None)
+        self.cv._timer.stop()
+        self.addCleanup(self.cv.deleteLater)
+
+    def test_stale_fail_shows_preparing_not_failed(self):
+        old = time.time() - 100
+        os.utime(self.tmp, (old, old))          # log is from BEFORE the click
+        self.cv._connect_t = time.time()
+        self.cv._connecting = 35
+        self.cv._failed = False
+        self.cv.refresh()
+        self.assertFalse(self.cv._failed)       # no spurious failure
+        self.assertEqual(self.cv.status.text(), gui.t("step.preparing"))
+
+    def test_fresh_fail_shows_failed(self):
+        self.cv._connect_t = time.time() - 1
+        os.utime(self.tmp, None)                 # log written AFTER the click
+        self.cv._connecting = 35
+        self.cv._failed = False
+        self.cv.refresh()
+        self.assertTrue(self.cv._failed)         # real, current-attempt failure
+        self.assertEqual(self.cv.status.text(), gui.t("status.failed_log"))
 
 
 if __name__ == "__main__":

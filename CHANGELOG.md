@@ -6,14 +6,22 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 ## [0.1.30] - 2026-06-11
 
 ### Fixed
-- **No more spurious red "timed out" flash during a slow connect (Windows).** The
-  GUI's connect window was only ~70 s, which openconnect-sso's embedded login
-  browser can exceed when it renders slowly (Skia/GPU stalls) — so the GUI
-  flashed "Zeitüberschreitung / timed out" and then "fixed itself" once the
-  tunnel came up moments later. Widened the window to 240 s so the **backend's**
-  own outcome decides — tunnel up, or a real "FAIL:" — instead of a too-short GUI
-  timer. (The connect itself was already succeeding; this only stops the false
-  error flash. Genuinely flaky Wintun/auth attempts still surface a real failure.)
+- **THE recurring "shows 'connection failed' for a moment, then connects anyway"
+  flash (Windows) — real root cause, observed not guessed.** The connect log is
+  owned by the elevated up-task, so the non-elevated GUI can't truncate it. For
+  the first 1-3 s of a new connect the file still holds the PREVIOUS attempt's
+  lines — and if that earlier attempt had failed, the **stale "FAIL:" flashed a
+  spurious "connection failed"** until the new attempt overwrote the log (hence
+  "kurz Error, läuft dann selber weiter, am Ende verbunden", and only "manchmal"
+  — only when the prior attempt had failed). The GUI now ignores the connect log
+  until it has been **freshly written for the current attempt** (its mtime is
+  at/after the Connect click); until then it just shows "Preparing …". A genuine
+  failure of the *current* attempt still shows correctly.
+
+### Changed
+- Widened the GUI connect window 70 s → 240 s as a safety net, so a slow login
+  browser (Skia/GPU stalls) can't make the GUI give up before the backend's own
+  outcome (tunnel up, or a real "FAIL:") is known.
 
 ## [0.1.29] - 2026-06-10
 
