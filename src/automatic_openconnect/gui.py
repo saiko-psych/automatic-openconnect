@@ -40,7 +40,8 @@ from . import autostart
 from . import session
 from . import tasks_windows as tw
 from . import totp_hotkey
-from ._windows import is_vpn_up, connect_log_path, append_connect_log
+from ._windows import (is_vpn_up, connect_log_path, append_connect_log,
+                       read_services_marker)
 from .secrets import (get_uni_login_password, get_uni_totp_secret,
                       set_uni_login_password, set_uni_totp_secret)
 
@@ -2056,6 +2057,19 @@ def run() -> int:
     return main()
 
 
+def _restore_orphaned_services() -> None:
+    """Crash/logoff recovery: if a previous session recorded stopping the
+    conflicting VPN services (Cisco/Mullvad) but died before its teardown
+    restarted them — and no tunnel is up now — fire the (elevated, granted)
+    down task to restart them. Best-effort + non-blocking; the down task clears
+    the marker. Does nothing in the normal case (no marker, or a tunnel is up)."""
+    try:
+        if read_services_marker() and not is_vpn_up() and tw.is_registered():
+            tw.run(tw.TASK_DOWN)
+    except Exception:  # noqa: BLE001 — purely best-effort cleanup
+        pass
+
+
 def main() -> int:
     global _CURRENT_ACCENT
     ui = (cfgmod.load_config().get("ui") or {})
@@ -2068,6 +2082,7 @@ def main() -> int:
     server = _single_instance_server(app)
     if server is None:
         return 0
+    _restore_orphaned_services()   # crash/logoff left Cisco/Mullvad stopped?
     app.setStyleSheet(_build_stylesheet(ui.get("accent", DEFAULT_ACCENT),
                                         ui.get("theme", DEFAULT_THEME)))
     # Keep the app alive when the window is closed — the tray icon controls

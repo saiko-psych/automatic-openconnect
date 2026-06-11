@@ -8,8 +8,10 @@ to univpn.uni-graz.at. They verify the orchestration logic, platform
 guards, and the no-op-when-disabled contract.
 """
 
+import pathlib
 import sys
 import subprocess
+import tempfile
 import unittest
 from unittest import mock
 
@@ -508,6 +510,48 @@ class TestAutoReconnect(unittest.TestCase):
             self.assertIs(s.proc, new_proc)
             stop_svc.assert_not_called()   # services NOT flapped on reconnect
             restart.assert_not_called()
+
+
+class TestServicesMarker(unittest.TestCase):
+    """Crash/logoff recovery: the app records which conflicting services it
+    stopped, so a session that dies before its teardown can be recovered. The
+    marker is cleared on every clean restart."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        mock.patch("automatic_openconnect.config.config_dir",
+                   return_value=pathlib.Path(self.tmp)).start()
+        self.addCleanup(mock.patch.stopall)
+        import shutil
+        self.addCleanup(lambda: shutil.rmtree(self.tmp, ignore_errors=True))
+
+    def test_roundtrip(self):
+        from automatic_openconnect import _windows as w
+        self.assertEqual(w.read_services_marker(), [])
+        w._mark_services_stopped(["csc_vpnagent", "MullvadVPN"])
+        self.assertEqual(w.read_services_marker(), ["csc_vpnagent", "MullvadVPN"])
+        w._clear_services_marker()
+        self.assertEqual(w.read_services_marker(), [])
+
+    def test_mark_empty_is_noop(self):
+        from automatic_openconnect import _windows as w
+        w._mark_services_stopped([])
+        self.assertEqual(w.read_services_marker(), [])
+
+    def test_start_marks_then_teardown_clears(self):
+        from automatic_openconnect import _windows as w
+        s = w._WinVpnSession({"user_email": "x@example.org"})
+        with mock.patch.object(w, "_kill_stale_processes"), \
+             mock.patch.object(w, "_check_keyring_credentials"), \
+             mock.patch.object(w, "_stop_conflicting_services",
+                               return_value=["MullvadVPN"]), \
+             mock.patch.object(s, "_bring_up"):
+            s.start()
+        self.assertEqual(w.read_services_marker(), ["MullvadVPN"])  # persisted
+        with mock.patch.object(w, "_stop_tunnel_by_proc"), \
+             mock.patch.object(w, "_restart_services"):
+            s.teardown()
+        self.assertEqual(w.read_services_marker(), [])              # cleared
 
 
 if __name__ == "__main__":

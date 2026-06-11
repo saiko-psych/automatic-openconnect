@@ -290,6 +290,49 @@ def _restart_services(services: List[str]) -> None:
                   file=sys.stderr)
 
 
+# --- "we stopped these services" marker (crash/logoff recovery) ---------
+# A clean teardown restarts the conflicting services it stopped. A CRASH or
+# LOGOFF while connected skips that teardown → the services stay stopped. We
+# persist the list we stopped to a marker file so the next GUI start can
+# restore them (via the down task) if no tunnel is up. Cleared on every clean
+# restart so it only ever lingers after an abrupt death.
+
+def _services_marker_path() -> str:
+    from . import config as cfgmod
+    return str(cfgmod.config_dir() / "stopped-services.json")
+
+
+def _mark_services_stopped(services: List[str]) -> None:
+    if not services:
+        return
+    try:
+        import json
+        os.makedirs(os.path.dirname(_services_marker_path()), exist_ok=True)
+        with open(_services_marker_path(), "w", encoding="utf-8") as f:
+            json.dump(services, f)
+    except OSError:
+        pass
+
+
+def _clear_services_marker() -> None:
+    try:
+        os.remove(_services_marker_path())
+    except OSError:
+        pass
+
+
+def read_services_marker() -> List[str]:
+    """Services WE stopped that may not have been restarted yet (a crash/logoff
+    skipped the teardown). Empty list if none / unreadable."""
+    try:
+        import json
+        with open(_services_marker_path(), encoding="utf-8") as f:
+            data = json.load(f)
+        return [s for s in data if s] if isinstance(data, list) else []
+    except (OSError, ValueError):
+        return []
+
+
 # --- SAML auth + tunnel bring-up ---------------------------------------
 
 def _authenticate(cfg: dict) -> Tuple[str, str, str]:
@@ -655,6 +698,9 @@ class _WinVpnSession:
         # Mullvad's routing would mask the SAML POST. They stay stopped for the
         # whole session — reconnects do NOT touch them.
         self.stopped_services = _stop_conflicting_services(self._cfg)
+        # Persist what we stopped so a crash/logoff (which skips teardown) can be
+        # recovered: the next GUI start restores them if no tunnel is up.
+        _mark_services_stopped(self.stopped_services)
         self._bring_up()
 
     def _bring_up(self) -> None:
@@ -677,6 +723,7 @@ class _WinVpnSession:
     def teardown(self) -> None:
         _stop_tunnel_by_proc(self.proc)
         _restart_services(self.stopped_services)
+        _clear_services_marker()   # clean teardown → nothing left to recover
 
 
 @contextmanager
@@ -878,6 +925,7 @@ def _cli_down(args) -> int:
         # teardown still cleans up after itself (both flags default True).
         auto_vpn = {}
     _restart_services(_configured_service_targets(auto_vpn))
+    _clear_services_marker()   # services restored → recovery marker no longer needed
     return 0
 
 

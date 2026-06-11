@@ -3,6 +3,23 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.31] - 2026-06-11
+
+### Fixed
+- **Conflicting VPN services (Cisco/Mullvad) are no longer left stopped after a
+  crash or logoff while connected (Windows).** The app stops them for the tunnel
+  duration and a clean Disconnect restarts them — but an abrupt death (crash /
+  logoff) skipped that teardown, leaving them off until the next disconnect. The
+  app now records which services IT stopped (a marker file); on the next start,
+  if no tunnel is up, it fires the granted down task to restart them + clear the
+  marker. A GUI crash while the tunnel stays up correctly keeps them stopped
+  (restored on the next Disconnect).
+
+### Added
+- `scripts/live_robustness_test.py` — a manual Windows robustness test (connect /
+  simulated crash / recover / reconnect) that checks success via `is_vpn_up` +
+  the route table, NOT the connect-log text. Guarded behind `--yes-disrupt-my-vpn`.
+
 ## [0.1.30] - 2026-06-11
 
 ### Fixed

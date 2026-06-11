@@ -215,5 +215,36 @@ class TestStaleConnectLogGuard(unittest.TestCase):
         self.assertEqual(self.cv.status.text(), gui.t("status.failed_log"))
 
 
+class TestServiceRecoveryOnStartup(unittest.TestCase):
+    """`_restore_orphaned_services()`: fire the (elevated) down task to restart
+    conflicting services ONLY when a marker says WE stopped them AND no tunnel
+    is up AND the task is registered — never otherwise (closes the crash/logoff
+    gap where Cisco/Mullvad were left stopped)."""
+
+    def _run(self, marker, up, registered):
+        with mock.patch("automatic_openconnect.gui.read_services_marker",
+                        return_value=marker), \
+             mock.patch("automatic_openconnect.gui.is_vpn_up",
+                        return_value=up), \
+             mock.patch("automatic_openconnect.gui.tw.is_registered",
+                        return_value=registered), \
+             mock.patch("automatic_openconnect.gui.tw.run") as run:
+            gui._restore_orphaned_services()
+            return run
+
+    def test_fires_down_when_marker_and_not_up(self):
+        self._run(["MullvadVPN"], up=False, registered=True) \
+            .assert_called_once_with(gui.tw.TASK_DOWN)
+
+    def test_skips_when_tunnel_up(self):
+        self._run(["MullvadVPN"], up=True, registered=True).assert_not_called()
+
+    def test_skips_when_no_marker(self):
+        self._run([], up=False, registered=True).assert_not_called()
+
+    def test_skips_when_task_not_registered(self):
+        self._run(["MullvadVPN"], up=False, registered=False).assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
