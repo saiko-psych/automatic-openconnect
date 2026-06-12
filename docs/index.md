@@ -19,6 +19,17 @@ Cisco AnyConnect protocol.
     that gateway ships as the default — but nothing is hard-wired. Point the
     **server** at your own gateway and you're set.
 
+## See it in action
+
+<video controls muted playsinline preload="metadata" style="width:100%;max-width:780px;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.18);">
+  <source src="assets/vpn_demo.mp4" type="video/mp4">
+  Your browser can't play the embedded video —
+  <a href="assets/vpn_demo.mp4">download the demo (MP4)</a>.
+</video>
+
+*Guided setup → one-click connect → the uni webmail loads through the tunnel →
+disconnect. Recorded in a clean Windows Sandbox.*
+
 ## What you get
 
 - **One click, no prompts.** Connect/disconnect from a tray icon; password and

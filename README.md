@@ -13,6 +13,8 @@ A thin automation layer over [openconnect-sso].
 &nbsp;[![release](https://img.shields.io/github/v/release/saiko-psych/automatic-openconnect)](https://github.com/saiko-psych/automatic-openconnect/releases/latest)
 &nbsp;[![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
+**▶ [Watch the demo](https://automatic-openconnect.readthedocs.io/en/latest/#see-it-in-action)** — guided setup → one-click connect → uni webmail through the tunnel → disconnect (recorded in a clean Windows Sandbox).
+
 ## 📖 Documentation
 
 **Everything — install, usage, 2FA, troubleshooting, internals — lives here:**
