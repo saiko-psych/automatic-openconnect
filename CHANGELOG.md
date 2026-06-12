@@ -3,6 +3,28 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.32] - 2026-06-12
+
+### Added
+- **TOTP hotkey on Linux & macOS.** `Ctrl+Alt+P` now types your current 6-digit
+  2FA code from the Linux/macOS tray too (toggle in the tray menu), matching the
+  Windows app. macOS needs a one-time **Accessibility + Input-Monitoring** grant
+  (System Settings → Privacy); Linux works on **X11** (not Wayland). Falls back
+  to a silent no-op when unavailable.
+
+### Fixed
+- **Prebuilt Linux/macOS binaries were shipping without PyQt6** since the
+  dependency split (0.1.29): the release workflow installed the core package (no
+  Qt) before bundling, so the tray binary would crash on launch. It now installs
+  the `[gui]` extra (PyQt6 + pynput) and bundles pynput. (Source installs were
+  unaffected.)
+
+### Documentation
+- A **click-by-click Windows install walkthrough** (every button + what/why), and
+  the **demo video** embedded on the docs home with a step-by-step "what happens"
+  chapter list. The TOTP-hotkey page now documents Linux/macOS + the macOS
+  permission grant.
+
 ## [0.1.31] - 2026-06-11
 
 ### Fixed

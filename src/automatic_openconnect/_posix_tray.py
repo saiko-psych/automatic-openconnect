@@ -31,6 +31,7 @@ from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor
 from PyQt6.QtCore import QTimer, Qt
 
 from . import config as cfgmod
+from .totp_hotkey import TotpHotkey, DEFAULT_HOTKEY_LABEL
 
 # openconnect-sso's keyring namespace — must match exactly or it won't find
 # the credentials it auto-fills with.
@@ -47,6 +48,35 @@ LOG_PATH = str(Path(tempfile.gettempdir()) / "automatic-openconnect-vpn.log")
 
 def _vpn_cfg() -> dict:
     return (cfgmod.load_config().get("auto_vpn") or {})
+
+
+# --- TOTP hotkey (Ctrl+Alt+P types the current 2FA code) ----------------
+# Same feature as the Windows app, here for the Linux/macOS tray. macOS needs a
+# one-time Accessibility/Input-Monitoring grant (System Settings → Privacy) for
+# pynput to read keys + type; Linux works on X11 (not Wayland). It degrades to a
+# silent no-op when pynput can't register.
+
+def _hotkey_seed():
+    """The base32 TOTP seed from the keyring (or None) — read fresh each press
+    so it keeps working after the user changes it."""
+    email = _vpn_cfg().get("user_email")
+    if not email:
+        return None
+    try:
+        import keyring
+        return keyring.get_password(SSO_KEYRING, f"totp/{email}")
+    except Exception:  # noqa: BLE001 — keyring locked/unavailable
+        return None
+
+
+def _hotkey_enabled() -> bool:
+    return bool((cfgmod.load_config().get("ui") or {}).get("totp_hotkey", True))
+
+
+def _set_hotkey_enabled(on: bool) -> None:
+    data = cfgmod.load_config()
+    data.setdefault("ui", {})["totp_hotkey"] = bool(on)
+    cfgmod.save_config(data)
 
 
 def _tunnel_up() -> bool:
@@ -327,6 +357,9 @@ def run() -> int:
     autostart_act = menu.addAction("Autostart beim Login")
     autostart_act.setCheckable(True)
     autostart_act.setChecked(autostart_enabled())
+    hotkey_act = menu.addAction(f"TOTP-Hotkey ({DEFAULT_HOTKEY_LABEL})")
+    hotkey_act.setCheckable(True)
+    hotkey_act.setChecked(_hotkey_enabled())
     quit_act = menu.addAction("Beenden")
     tray.setContextMenu(menu)
     tray.show()
@@ -344,6 +377,30 @@ def run() -> int:
                              QSystemTrayIcon.MessageIcon.Critical, 4000)
 
     autostart_act.toggled.connect(toggle_autostart)
+
+    # Global TOTP hotkey: Ctrl+Alt+P types the current 6-digit code anywhere.
+    hotkey = TotpHotkey(_hotkey_seed)
+    if _hotkey_enabled() and not hotkey.start():
+        hotkey_act.setChecked(False)   # pynput unavailable → reflect reality
+
+    def toggle_hotkey(checked):
+        if checked:
+            if not hotkey.start():
+                hotkey_act.setChecked(False)
+                tray.showMessage(
+                    "VPN",
+                    "TOTP-Hotkey nicht verfügbar (pynput fehlt, oder auf macOS "
+                    "noch keine Bedienungshilfen-Freigabe).",
+                    QSystemTrayIcon.MessageIcon.Warning, 5000)
+                return
+            tray.showMessage("VPN", f"TOTP-Hotkey aktiv: {DEFAULT_HOTKEY_LABEL}",
+                             QSystemTrayIcon.MessageIcon.Information, 2500)
+        else:
+            hotkey.stop()
+        _set_hotkey_enabled(checked)
+
+    hotkey_act.toggled.connect(toggle_hotkey)
+    app.aboutToQuit.connect(hotkey.stop)   # clean up the listener on exit
 
     state = {"s": OFF, "blink": False, "dlg_shown": False}
 

@@ -36,12 +36,17 @@ jobs:
       - name: Install package + PyInstaller
         run: |
           python -m pip install --upgrade pip
-          pip install -e .
+          # [gui] = PyQt6 (the tray) + pynput (the TOTP hotkey). Since the
+          # PyQt6/pynput move to the [gui] extra (#5), a bare `pip install -e .`
+          # no longer pulls them — the binary MUST install [gui] or it ships
+          # without Qt and crashes on launch.
+          pip install -e ".[gui]"
           pip install pyinstaller
       - name: Build single-file tray binary
         run: >
           pyinstaller --onefile --name ${{ matrix.name }}
           --collect-all PyQt6
+          --collect-all pynput
           packaging/posix_entry.py
       - name: Attach to the release
         uses: softprops/action-gh-release@v2

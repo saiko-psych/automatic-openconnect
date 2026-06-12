@@ -30,6 +30,25 @@ Cisco AnyConnect protocol.
 *Guided setup → one-click connect → the uni webmail loads through the tunnel →
 disconnect. Recorded in a clean Windows Sandbox.*
 
+??? info "What happens in the video — step by step"
+    1. **~0:00 — Get the app.** The GitHub release page; `automatic-vpn.exe` is
+       downloaded.
+    2. **~0:30 — First launch.** The app opens to the setup form — *Email*,
+       *Server* (pre-filled with `univpn.uni-graz.at`), *Password*, *TOTP seed*,
+       plus the options for the 2FA hotkey and for stopping conflicting VPNs.
+    3. **~1:00 — Install the VPN engine.** The OpenConnect-GUI download page; it's
+       installed (it ships `openconnect.exe` + the Wintun driver). Email and
+       password are filled into the form.
+    4. **~1:50 — Prerequisites all green → Set up.** Back in the app every
+       prerequisite reads **[OK]** (“All set — you can connect”), and the
+       **“Set up (one-time admin prompt)”** button is clicked — the single UAC.
+    5. **~2:25 — Automatic login.** The uniLOGIN SSO browser opens and the
+       **6-digit 2FA code is filled in for you** (no typing); the login completes.
+    6. **~2:40 — Connecting → Connected.** The status goes from **“Connecting …”**
+       to a green **“Connected”**.
+    7. **~2:55 — Proof it's live.** The university webmail loads **through the
+       tunnel**.
+
 ## What you get
 
 - **One click, no prompts.** Connect/disconnect from a tray icon; password and
